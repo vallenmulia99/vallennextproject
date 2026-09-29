@@ -42,7 +42,16 @@ class SessionManager:
         self._messages: list[Message] = []
         self._session_id: str | None = None
         self._title: str = "New Session"
+        self._cached_system_prompt: str | None = None
         self.mode: str = "build"  # "build" | "plan"
+
+    @property
+    def cached_system_prompt(self) -> str | None:
+        return self._cached_system_prompt
+
+    @cached_system_prompt.setter
+    def cached_system_prompt(self, val: str | None) -> None:
+        self._cached_system_prompt = val
 
     # ------------------------------------------------------------------
     # Session lifecycle
@@ -61,6 +70,7 @@ class SessionManager:
         self._ws.active_session_id = sid
         self._messages = []
         self._title = "New Session"
+        self._cached_system_prompt = None
         try:
             from ..tools.file_tools import clear_read_cache
             clear_read_cache()
@@ -138,6 +148,7 @@ class SessionManager:
 
     def clear(self) -> None:
         self._messages = []
+        self._cached_system_prompt = None
         if self._session_id:
             self._db.clear_messages(self._session_id)
         try:

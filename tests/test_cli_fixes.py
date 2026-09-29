@@ -173,4 +173,22 @@ async def test_deferred_tools_flow():
     assert res_call.success
 
 
+def test_system_prompt_caching_invariant():
+    from vallen_cli.core.session import get_session_manager
+
+    sess = get_session_manager()
+    sess.clear()
+    assert sess.cached_system_prompt is None
+
+    # Simulate caching prompt
+    cached_text = "SYSTEM PROMPT V1"
+    sess.cached_system_prompt = cached_text
+    assert sess.cached_system_prompt == cached_text
+
+    # Clear resets cache
+    sess.clear()
+    assert sess.cached_system_prompt is None
+
+
+
 

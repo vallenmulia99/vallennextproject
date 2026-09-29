@@ -105,13 +105,18 @@ async def run_agent(
         or "You are VALLEN, an expert AI software engineering agent" in cfg.system_prompt
     )
     custom_prompt = None if is_default_prompt else cfg.system_prompt
-    effective_prompt = await build_full_system_prompt(
-        base_prompt=custom_prompt,
-        project_path=project_path,
-        model_id=effective_model,
-        provider_name=cfg.active_provider,
-        mode=getattr(session, "mode", "build"),
-    )
+    if session.cached_system_prompt is not None and not custom_prompt:
+        effective_prompt = session.cached_system_prompt
+    else:
+        effective_prompt = await build_full_system_prompt(
+            base_prompt=custom_prompt,
+            project_path=project_path,
+            model_id=effective_model,
+            provider_name=cfg.active_provider,
+            mode=getattr(session, "mode", "build"),
+        )
+        if not custom_prompt:
+            session.cached_system_prompt = effective_prompt
 
     # ── Auto snapshot before first agent edit ────────────────────────────
     if project_path and session.session_id:
