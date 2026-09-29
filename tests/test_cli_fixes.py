@@ -277,6 +277,39 @@ def test_html_to_clean_markdown():
     assert "```" in clean and "def test(): return 42" in clean
 
 
+@pytest.mark.asyncio
+async def test_concurrent_safe_tool_execution(tmp_path):
+    from vallen_cli.tools.registry import get_tool_registry
+    from vallen_cli.core.permission import get_permission_manager
+    reg = get_tool_registry()
+    perm = get_permission_manager()
+
+    f1 = tmp_path / "f1.txt"
+    f2 = tmp_path / "f2.txt"
+    f1.write_text("content 1\n")
+    f2.write_text("content 2\n")
+
+    tcs = [
+        {"id": "call_1", "function": {"name": "read", "arguments": f'{{"filePath": "{f1}"}}'}},
+        {"id": "call_2", "function": {"name": "read", "arguments": f'{{"filePath": "{f2}"}}'}},
+    ]
+
+    # Verify both tools are in SAFE_TOOLS
+    assert all(tc["function"]["name"] in perm.SAFE_TOOLS for tc in tcs)
+
+    import json
+    import asyncio
+    async def run_tc(tc):
+        args = json.loads(tc["function"]["arguments"])
+        return await reg.execute(tc["function"]["name"], **args)
+
+    results = await asyncio.gather(*(run_tc(tc) for tc in tcs))
+    assert len(results) == 2
+    assert "content 1" in results[0].output
+    assert "content 2" in results[1].output
+
+
+
 
 
 

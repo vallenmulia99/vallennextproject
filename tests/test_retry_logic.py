@@ -72,3 +72,21 @@ def test_classify_error_behavior():
     assert ctimeout.kind == "timeout"
 
 
+def test_should_retry_provider_error_ladder():
+    from vallen_cli.core.loop.turn_recovery import should_retry_provider_error
+
+    # Auth error: should NOT retry
+    retry, delay, c = should_retry_provider_error("401 Unauthorized", attempt=0, max_attempts=3)
+    assert retry is False
+
+    # 429 rate limit: should retry with suggested backoff
+    retry, delay, c = should_retry_provider_error("429 Rate limit: retry-after: 3", attempt=0, max_attempts=3)
+    assert retry is True
+    assert delay == 3.0
+
+    # Exhausted attempts: should NOT retry
+    retry, delay, c = should_retry_provider_error("429 Rate limit", attempt=3, max_attempts=3)
+    assert retry is False
+
+
+

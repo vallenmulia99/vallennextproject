@@ -36,7 +36,7 @@ from ..providers.base import Message, StreamChunk
 from ..tools.registry import get_tool_registry, tool_names_for_profile
 from ..tools.base import format_tool_output
 from .loop.turn_tools import check_doom_loop, format_tool_content_for_session, truncate_large_output
-from .loop.turn_recovery import handle_length_truncation
+from .loop.turn_recovery import handle_length_truncation, should_retry_provider_error
 from .error_classifier import classify_error
 
 
@@ -296,18 +296,18 @@ async def run_agent(
                 raise
             except Exception as exc:
                 provider_error = exc
-                # Don't retry non-retryable errors (auth, bad request, etc.)
-                if not getattr(exc, "retryable", True):
+                should_retry, delay, classification = should_retry_provider_error(
+                    exc, provider_attempt, MAX_PROVIDER_RETRIES
+                )
+                if not getattr(exc, "retryable", True) or not should_retry:
                     break
-                if provider_attempt >= MAX_PROVIDER_RETRIES:
-                    break
-                delay = min(2 ** provider_attempt, 4)
                 if on_event:
                     on_event(AgentEvent("provider_retry", {
                         "attempt": provider_attempt + 1,
                         "max_attempts": MAX_PROVIDER_RETRIES + 1,
                         "delay_seconds": delay,
                         "error": str(exc),
+                        "kind": classification.kind,
                     }))
                 await asyncio.sleep(delay)
 
