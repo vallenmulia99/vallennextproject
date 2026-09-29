@@ -289,3 +289,57 @@ def test_smart_replace_step4_preserves_block_indentation():
     assert res == "def test():\n    if cond:\n        new_action()\n"
 
 
+@pytest.mark.asyncio
+async def test_file_modification_invalidates_read_cache(tmp_path: Path):
+    from vallen_cli.tools.file_tools import ReadTool, EditTool, WriteTool
+    from vallen_cli.core.workspace import get_workspace
+
+    get_workspace().new_project(str(tmp_path))
+    test_file = tmp_path / "changed.py"
+    test_file.write_text("v1 = 1\n")
+
+    # Read the file
+    res_r = await ReadTool().execute(filePath=str(test_file))
+    assert res_r.success
+
+    # File modified externally on disk
+    import time
+    time.sleep(0.01)
+    test_file.write_text("v1 = 9999\n")
+
+    # Now edit should detect file changed since last read
+    res_e = await EditTool().execute(filePath=str(test_file), oldString="v1 = 1", newString="v1 = 2")
+    assert not res_e.success
+    assert "changed" in res_e.error.lower() and "read" in res_e.error.lower()
+
+    # Write should also detect file changed
+    res_w = await WriteTool().execute(filePath=str(test_file), content="v1 = 3\n")
+    assert not res_w.success
+    assert "changed" in res_w.error.lower() and "read" in res_w.error.lower()
+
+
+@pytest.mark.asyncio
+async def test_session_clear_resets_read_cache(tmp_path: Path):
+    from vallen_cli.tools.file_tools import ReadTool, EditTool
+    from vallen_cli.core.session import get_session_manager
+    from vallen_cli.core.workspace import get_workspace
+
+    get_workspace().new_project(str(tmp_path))
+    test_file = tmp_path / "sample.py"
+    test_file.write_text("x = 1\n")
+
+    # Read the file
+    res_r = await ReadTool().execute(filePath=str(test_file))
+    assert res_r.success
+
+    # Clear session
+    get_session_manager().clear()
+
+    # Now edit should fail because read cache was reset
+    res_e = await EditTool().execute(filePath=str(test_file), oldString="x = 1", newString="x = 2")
+    assert not res_e.success
+    assert "must read" in res_e.error.lower() or "read tool first" in res_e.error.lower()
+
+
+
+

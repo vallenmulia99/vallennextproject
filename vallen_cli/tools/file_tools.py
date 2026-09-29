@@ -42,20 +42,52 @@ _BINARY_EXTENSIONS = {
 _DEFAULT_READ_LIMIT = 2000
 _MAX_LINE_LENGTH = 2000
 
-# Set of paths that have been read in the active session
-_read_cache: set[str] = set()
+# Map of resolved path -> (mtime_ns, size)
+_read_cache: dict[str, tuple[int, int]] = {}
 
 
 def mark_file_read(path_str: str) -> None:
-    _read_cache.add(str(Path(path_str).resolve()))
+    p = Path(path_str).resolve()
+    try:
+        st = p.stat()
+        _read_cache[str(p)] = (st.st_mtime_ns, st.st_size)
+    except OSError:
+        _read_cache[str(p)] = (0, 0)
 
 
 def is_file_read(path_str: str) -> bool:
-    return str(Path(path_str).resolve()) in _read_cache
+    p = Path(path_str).resolve()
+    key = str(p)
+    if key not in _read_cache:
+        return False
+    try:
+        st = p.stat()
+        recorded = _read_cache[key]
+        if recorded == (0, 0):
+            return True
+        return (st.st_mtime_ns, st.st_size) == recorded
+    except OSError:
+        return True
+
+
+def file_changed_since_read(path_str: str) -> bool:
+    p = Path(path_str).resolve()
+    key = str(p)
+    if key not in _read_cache:
+        return False
+    try:
+        st = p.stat()
+        recorded = _read_cache[key]
+        if recorded == (0, 0):
+            return False
+        return (st.st_mtime_ns, st.st_size) != recorded
+    except OSError:
+        return False
 
 
 def clear_read_cache() -> None:
     _read_cache.clear()
+
 
 
 def _is_binary(path: Path, sample: bytes) -> bool:
@@ -299,12 +331,19 @@ class WriteTool(BaseTool):
             tracker = get_file_tracker()
             
             # Enforce read-before-write for existing files
-            if p.exists() and not is_file_read(str(p)):
-                return ToolResult(
-                    success=False,
-                    output="",
-                    error=f"You must Read {p.name} before writing to it. Use the read tool first."
-                )
+            if p.exists():
+                if file_changed_since_read(str(p)):
+                    return ToolResult(
+                        success=False,
+                        output="",
+                        error=f"File changed on disk since last read: {p.name}. Read the file again before writing.",
+                    )
+                if not is_file_read(str(p)):
+                    return ToolResult(
+                        success=False,
+                        output="",
+                        error=f"You must Read {p.name} before writing to it. Use the read tool first."
+                    )
 
             before_content = None
             file_newline = "\n"
@@ -597,6 +636,12 @@ class EditTool(BaseTool):
 
             # Enforce read-before-edit after validating an explicit stale-file
             # anchor, so callers receive the more useful stale-anchor error.
+            if file_changed_since_read(str(p)):
+                return ToolResult(
+                    success=False,
+                    output="",
+                    error=f"File changed on disk since last read: {p.name}. Read the file again before editing.",
+                )
             if not is_file_read(str(p)):
                 return ToolResult(
                     success=False,

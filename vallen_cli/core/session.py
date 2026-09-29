@@ -61,6 +61,11 @@ class SessionManager:
         self._ws.active_session_id = sid
         self._messages = []
         self._title = "New Session"
+        try:
+            from ..tools.file_tools import clear_read_cache
+            clear_read_cache()
+        except ImportError:
+            pass
         return sid
 
     def resume(self, session_id: str) -> bool:
@@ -135,6 +140,11 @@ class SessionManager:
         self._messages = []
         if self._session_id:
             self._db.clear_messages(self._session_id)
+        try:
+            from ..tools.file_tools import clear_read_cache
+            clear_read_cache()
+        except ImportError:
+            pass
 
     @property
     def message_count(self) -> int:
