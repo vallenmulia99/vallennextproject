@@ -44,7 +44,12 @@ def set_todos(todos: list[dict[str, Any]]) -> None:
 
 class TodoWriteTool(BaseTool):
     name = "todowrite"
-    description = "Create and maintain a structured task list for the current coding session. Tracks progress, organizes multi-step work, and surfaces status to the user.\n\n## When to use\nUse proactively when:\n- The task requires 3+ distinct steps or actions (not just 3 tool calls for a single conceptual step)\n- The work is non-trivial and benefits from planning\n- The user provides multiple tasks (numbered or comma-separated) or explicitly asks for a todo list\n- New instructions arrive - capture them as todos\n- You start a task - mark it `in_progress` (only one at a time) before working\n- You finish a task - mark it `completed` and add any follow-ups discovered during the work\n\n## When NOT to use\nSkip when:\n- The work is a single, straightforward task (or <3 trivial steps)\n- The request is purely informational or conversational\n- Tracking adds no organizational value\n\n## States\n- `pending` - not started\n- `in_progress` - actively working (exactly ONE at a time)\n- `completed` - finished successfully\n- `cancelled` - no longer needed\n\n## Rules\n- Update status in real time; don't batch completions\n- Mark `completed` only after the required work is actually done, including any required verification. Never based on intent.\n- Keep exactly one `in_progress` while work remains\n- If blocked or partial, keep it `in_progress` and add a follow-up todo describing the blocker\n- Preserve user-provided commands verbatim (flags, args, order)\n- Items should be specific and actionable; break large work into smaller steps\n\n## Examples\n\nUse it:\n- \"Add a dark mode toggle and run the tests\" -> multi-step feature + explicit verification\n- \"Rename getCwd -> getCurrentWorkingDirectory across the repo\" -> grep reveals 15 occurrences in 8 files\n- \"Implement registration, catalog, cart, checkout\" -> multiple complex features\n\nSkip it:\n- \"How do I print Hello World in Python?\" -> informational\n- \"Add a comment to calculateTotal\" -> single edit\n- \"Run npm install and tell me what happened\" -> one command\n\nWhen in doubt, use it."
+    aliases = ["todo", "todo_list"]
+    description = (
+        "Create and maintain a structured task list for the current coding session. "
+        "Tracks progress, organizes multi-step work, and surfaces status to the user. "
+        "Call without arguments to read the current task list."
+    )
     parameters = {
         "type": "object",
         "properties": {
@@ -63,10 +68,23 @@ class TodoWriteTool(BaseTool):
                 },
             }
         },
-        "required": ["todos"],
     }
 
-    async def execute(self, todos: list[dict[str, Any]], **kwargs: Any) -> ToolResult:  # type: ignore[override]
+    async def execute(self, todos: list[dict[str, Any]] | None = None, **kwargs: Any) -> ToolResult:  # type: ignore[override]
+        if todos is None:
+            # Read current active todos if no new list is provided
+            current = get_todos()
+            if not current:
+                return ToolResult(success=True, output="No tasks recorded yet.", data={"todos": []})
+            icons = {"pending": "○", "in_progress": "◌", "completed": "✓"}
+            done = sum(1 for t in current if t.get("status") == "completed")
+            lines = [f"Current Tasks ({done}/{len(current)} done)\n"]
+            for t in current:
+                icon = icons.get(t.get("status"), "○")
+                pri = f"[{t.get('priority')}]" if t.get("priority") == "high" else ""
+                lines.append(f"  {icon} {t.get('content')} {pri}".rstrip())
+            return ToolResult(success=True, output="\n".join(lines), data={"todos": current})
+
         if not isinstance(todos, list):
             return ToolResult(success=False, output="", error="todos must be a list")
 

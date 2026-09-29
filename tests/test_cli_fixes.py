@@ -309,6 +309,49 @@ async def test_concurrent_safe_tool_execution(tmp_path):
     assert "content 2" in results[1].output
 
 
+@pytest.mark.asyncio
+async def test_todo_tool_alias_and_read_view():
+    from vallen_cli.tools.registry import get_tool_registry
+    reg = get_tool_registry()
+
+    # Alias 'todo' must be resolvable
+    todo_tool = reg.get("todo")
+    assert todo_tool is not None
+
+    # Write todos
+    res_write = await todo_tool.execute(todos=[{"content": "Step 1", "status": "pending", "priority": "high"}])
+    assert res_write.success
+    assert "Step 1" in res_write.output
+
+    # Read back current todos without providing argument
+    res_read = await todo_tool.execute()
+    assert res_read.success
+    assert "Current Tasks" in res_read.output
+    assert "Step 1" in res_read.output
+
+
+@pytest.mark.asyncio
+async def test_memory_tool_view_and_add(tmp_path):
+    from vallen_cli.tools.registry import get_tool_registry
+    from vallen_cli.core.workspace import get_workspace
+    get_workspace().new_project(str(tmp_path))
+
+    reg = get_tool_registry()
+    mem_tool = reg.get("memory")
+    assert mem_tool is not None
+
+    # Add memory
+    res_add = await mem_tool.execute(note="Always prefer async/await over threads")
+    assert res_add.success
+    assert "Remembered" in res_add.output
+
+    # View memory
+    res_view = await mem_tool.execute(action="view")
+    assert res_view.success
+    assert "prefer async/await" in res_view.output
+
+
+
 
 
 

@@ -11,31 +11,41 @@ from ..core.memory import append_memory, load_memory
 
 class RememberTool(BaseTool):
     name = "remember"
-    aliases = ["save_memory", "record_learning"]
+    aliases = ["memory", "save_memory", "record_learning"]
     description = (
-        "Save a key learning, user preference, architectural decision, or constraint into "
-        "persistent project memory (.vallen/memory.md). Use this tool whenever the user "
-        "expresses a personal preference (e.g. 'I prefer Tailwind', 'Always use TypeScript'), "
-        "or when a critical architectural decision is made that should persist across sessions."
+        "View or save durable project facts, user preferences, and architectural decisions "
+        "into persistent memory (.vallen/memory.md). Memory persists across sessions."
     )
     parameters = {
         "type": "object",
         "properties": {
+            "action": {
+                "type": "string",
+                "enum": ["add", "view"],
+                "description": "Action to perform: 'add' (save new note) or 'view' (read existing memory)",
+            },
             "note": {
                 "type": "string",
                 "description": "The specific fact, decision, pattern, or user preference to remember",
             },
         },
-        "required": ["note"],
     }
 
-    async def execute(self, note: str = "", **kwargs: Any) -> ToolResult:
-        note_str = (note or kwargs.get("learning") or kwargs.get("preference") or "").strip()
-        if not note_str:
-            return ToolResult(success=False, output="", error="note is required")
-
+    async def execute(self, note: str = "", action: str = "add", **kwargs: Any) -> ToolResult:
         ws = get_workspace()
         project_path = ws.active_project_path
+        act = (action or kwargs.get("op") or "add").lower()
+
+        if act in ("view", "list", "read") or (not note and not kwargs.get("content") and not kwargs.get("learning")):
+            current = load_memory(project_path)
+            if not current:
+                return ToolResult(success=True, output="Project memory is empty.", data={"memory": ""})
+            return ToolResult(success=True, output=f"Project Memory:\n\n{current}", data={"memory": current})
+
+        note_str = (note or kwargs.get("content") or kwargs.get("learning") or kwargs.get("preference") or "").strip()
+        if not note_str:
+            return ToolResult(success=False, output="", error="note or content is required to add memory")
+
         append_memory(project_path, note_str)
 
         return ToolResult(
