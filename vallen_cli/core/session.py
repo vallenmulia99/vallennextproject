@@ -44,6 +44,7 @@ class SessionManager:
         self._title: str = "New Session"
         self._cached_system_prompt: str | None = None
         self.mode: str = "build"  # "build" | "plan"
+        self.tool_profile: str = "full"
 
     @property
     def cached_system_prompt(self) -> str | None:

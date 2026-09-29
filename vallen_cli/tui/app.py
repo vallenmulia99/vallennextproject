@@ -550,7 +550,7 @@ def set_system_clipboard(content: str) -> None:
 
 
 AVAILABLE_SLASH_COMMANDS = [
-    "/help", "/models", "/autopilot", "/yolo", "/plan", "/build",
+    "/help", "/models", "/autopilot", "/yolo", "/plan", "/build", "/profile",
     "/diff", "/clear", "/tree", "/compact", "/revert", "/snapshot",
     "/tokens", "/todos", "/commands", "/skills", "/mcp", "/new",
     "/status", "/projects", "/sessions", "/history", "/export", "/fork", "/cd", "/debug"

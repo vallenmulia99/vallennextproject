@@ -459,6 +459,36 @@ async def _handle_slash(text: str) -> CommandResult:
             kind="success",
         )
 
+    if cmd == "/profile":
+        from ..tools.registry import TOOL_PROFILES
+        sess = get_session_manager()
+        args = text.strip().split()
+        if len(args) > 1:
+            target_profile = args[1].lower()
+            if target_profile in TOOL_PROFILES:
+                sess.tool_profile = target_profile
+                return CommandResult(
+                    handled=True,
+                    output=f"✓ Switched tool profile to: {target_profile}",
+                    kind="success",
+                )
+            else:
+                return CommandResult(
+                    handled=True,
+                    output=f"Unknown profile '{target_profile}'. Available: {', '.join(sorted(TOOL_PROFILES.keys()))}",
+                    kind="error",
+                )
+        curr = getattr(sess, "tool_profile", "full")
+        profiles_info = "\n".join(
+            f"  - {name}{' (active)' if name == curr else ''}: {', '.join(sorted(tools)) if tools else '(all tools)'}"
+            for name, tools in sorted(TOOL_PROFILES.items())
+        )
+        return CommandResult(
+            handled=True,
+            output=f"Active tool profile: {curr}\n\nAvailable profiles:\n{profiles_info}\n\nUse `/profile <name>` to switch.",
+            kind="info",
+        )
+
     if cmd in ("/autopilot", "/yolo"):
         from ..core.permission import get_permission_manager
         perm = get_permission_manager()

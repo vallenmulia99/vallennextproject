@@ -156,7 +156,7 @@ async def run_agent(
         messages = get_messages()
 
     mode = getattr(session, "mode", "build")
-    profile = "explore" if mode == "plan" else "full"
+    profile = "explore" if mode == "plan" else getattr(session, "tool_profile", "full")
     tools = tool_registry.schemas(tool_names_for_profile(profile))
     full_response = ""
     input_tokens_total = token_count

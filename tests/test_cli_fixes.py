@@ -190,5 +190,34 @@ def test_system_prompt_caching_invariant():
     assert sess.cached_system_prompt is None
 
 
+@pytest.mark.asyncio
+async def test_slash_profile_command():
+    from vallen_cli.commands.processor import process_input
+    from vallen_cli.core.session import get_session_manager
+
+    sess = get_session_manager()
+
+    # List profiles
+    res_list = await process_input("/profile")
+    assert res_list.handled is True
+    assert "Active tool profile:" in res_list.output
+    assert "narrow" in res_list.output
+    assert "core" in res_list.output
+
+    # Switch to narrow profile
+    res_switch = await process_input("/profile narrow")
+    assert res_switch.handled is True
+    assert res_switch.kind == "success"
+    assert "Switched tool profile to: narrow" in res_switch.output
+    assert sess.tool_profile == "narrow"
+
+    # Switch to unknown profile fails cleanly
+    res_unknown = await process_input("/profile imaginary")
+    assert res_unknown.handled is True
+    assert res_unknown.kind == "error"
+    assert "Unknown profile" in res_unknown.output
+
+
+
 
 
