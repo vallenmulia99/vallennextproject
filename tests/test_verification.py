@@ -45,3 +45,27 @@ async def test_verify_does_not_pass_jest_flags_to_generic_npm_tests(tmp_path, mo
     result = await VerifyTool().execute(workdir=str(tmp_path))
     assert result.success
     assert captured["command"] == ["npm", "test"]
+
+
+@pytest.mark.asyncio
+async def test_verify_command_override_from_config(tmp_path, monkeypatch):
+    from vallen_cli.core.config import get_config
+    cfg = get_config()
+    monkeypatch.setattr(cfg, "get", lambda key, default=None: {"command": "cargo test --quiet"} if key == "verify" else default)
+
+    captured = {}
+
+    class Process:
+        returncode = 0
+        async def communicate(self):
+            return b"ok", b""
+
+    async def fake_create_subprocess_exec(*command, **kwargs):
+        captured["command"] = list(command)
+        return Process()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    result = await VerifyTool().execute(workdir=str(tmp_path))
+    assert result.success
+    assert captured["command"] == ["cargo", "test", "--quiet"]
+

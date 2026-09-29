@@ -439,8 +439,10 @@ async def run_agent(
                     invalidate_git_cache(project_path)
 
                 output = format_tool_output(result)
+                cfg_verify_on_edit = cfg.get("verify", {}).get("on_edit", False) if isinstance(cfg.get("verify"), dict) else False
                 if (
-                    result.success
+                    cfg_verify_on_edit
+                    and result.success
                     and getattr(session, "mode", "build") == "build"
                     and tool_name in ("write", "write_file", "edit", "edit_file", "apply_patch")
                     and project_path

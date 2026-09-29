@@ -37,7 +37,14 @@ class VerifyTool(BaseTool):
             return ToolResult(success=False, output="", error=f"Project directory not found: {root}")
 
         command: list[str]
-        if (root / "pyproject.toml").is_file() and (root / "tests").is_dir():
+        from ..core.config import get_config
+        import shlex
+        cfg = get_config()
+        verify_cfg = cfg.get("verify", default={})
+        custom_cmd = verify_cfg.get("command") if isinstance(verify_cfg, dict) else None
+        if custom_cmd:
+            command = shlex.split(custom_cmd) if isinstance(custom_cmd, str) else list(custom_cmd)
+        elif (root / "pyproject.toml").is_file() and (root / "tests").is_dir():
             command = [sys.executable, "-m", "pytest", "-q"]
         elif (root / "package.json").is_file():
             try:
