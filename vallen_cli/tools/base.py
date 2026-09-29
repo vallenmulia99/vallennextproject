@@ -116,16 +116,14 @@ class ToolRegistry:
         elif "cwd" in kwargs and "workdir" not in kwargs:
             kwargs["workdir"] = kwargs["cwd"]
 
+        import inspect
+        sig = inspect.signature(tool.execute)
+        has_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+        if not has_var_keyword:
+            kwargs = {k: v for k, v in kwargs.items() if k in sig.parameters}
+
         try:
             return await tool.execute(**kwargs)
-        except TypeError as te:
-            # If unexpected kwargs were passed by LLM, try calling with only accepted parameters
-            import inspect
-            sig = inspect.signature(tool.execute)
-            valid_args = {k: v for k, v in kwargs.items() if k in sig.parameters}
-            try:
-                return await tool.execute(**valid_args)
-            except Exception as inner_e:
-                return ToolResult(success=False, output="", error=f"Tool '{_tool_name}' argument error: {inner_e}")
         except Exception as e:
             return ToolResult(success=False, output="", error=f"Tool '{_tool_name}' failed with error: {e}")
+

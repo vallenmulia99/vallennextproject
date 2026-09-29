@@ -21,3 +21,28 @@ def test_non_retryable_errors_marked():
     non_retryable_codes = [400, 401, 403, 404, 422, 429]
     # Provider should mark these as retryable=False
     assert len(non_retryable_codes) == 6
+
+
+@pytest.mark.asyncio
+async def test_tool_execution_does_not_retry_on_internal_type_error():
+    from vallen_cli.tools.base import BaseTool, ToolResult
+    from vallen_cli.tools.registry import ToolRegistry
+
+    calls = 0
+
+    class BuggyTool(BaseTool):
+        name = "buggy"
+        async def execute(self, x: int = 1) -> ToolResult:
+            nonlocal calls
+            calls += 1
+            # Real bug inside tool raises TypeError
+            return "abc" + 123  # type: ignore
+
+    registry = ToolRegistry()
+    registry.register(BuggyTool())
+
+    res = await registry.execute("buggy", x=1)
+    assert not res.success
+    # Tool must NOT be called twice!
+    assert calls == 1
+
