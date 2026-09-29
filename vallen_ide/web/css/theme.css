@@ -1,0 +1,92 @@
+:root {
+  /* VS Code Dark Modern Base */
+  --bg-app: #181818;
+  --bg-panel: #1e1e1e;
+  --bg-sidebar: #181818;
+  --bg-activity: #181818;
+  --bg-card: #252526;
+  --bg-card-hover: #2a2d2e;
+  --bg-input: #313131;
+  --bg-hover: rgba(255, 255, 255, 0.06);
+  --bg-active: rgba(112, 71, 235, 0.2);
+  --selection-bg: #04395e;
+
+  --border-subtle: #2b2b2b;
+  --border-light: #383838;
+  --border-active: #7047eb;
+
+  /* VALLEN Accents */
+  --accent-purple: #7047eb;
+  --accent-purple-light: #8b66f7;
+  --accent-purple-glow: rgba(112, 71, 235, 0.35);
+  --accent-blue: #007acc;
+  --accent-cyan: #38bdf8;
+  --accent-green: #10b981;
+  --accent-red: #ef4444;
+  --accent-yellow: #f59e0b;
+
+  --text-bright: #ffffff;
+  --text-main: #cccccc;
+  --text-muted: #969696;
+  --text-dim: #6e7681;
+  --text-link: #3794ff;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', Menlo, Monaco, Consolas, monospace;
+
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+button, select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+html, body {
+  height: 100%;
+  width: 100%;
+  background-color: var(--bg-app);
+  color: var(--text-main);
+  font-family: var(--font-sans);
+  overflow: hidden;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+  font-size: 13px;
+}
+
+/* Scrollbars - VS Code Thin Style */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(121, 121, 121, 0.3);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(121, 121, 121, 0.6);
+}
+
+/* Global Display Utility */
+.hidden {
+  display: none !important;
+}

@@ -1,0 +1,11 @@
+{
+  "models": [
+    {
+      "title": "VallenNext Free Coder",
+      "provider": "openai",
+      "model": "vallennext/free",
+      "apiBase": "https://apikeyfreevallennext.vercel.app/v1",
+      "apiKey": "free"
+    }
+  ]
+}

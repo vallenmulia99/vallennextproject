@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=VALLEN IDE
+GenericName=AI Code Editor
+Comment=AntiGravity & Kiro style AI-powered Code Editor and Workspace
+Exec=/home/VALLEN/Desktop/src/vallen_ide/launch.sh
+Icon=/home/VALLEN/Desktop/src/vallen_ide/web/assets/icon.jpeg
+Terminal=false
+Categories=Development;IDE;TextEditor;
+StartupWMClass=google-chrome

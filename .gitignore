@@ -1,0 +1,51 @@
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python cache & build
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Node / JS artifacts
+node_modules/
+.next/
+out/
+.pnp
+.pnp.js
+
+# Databases, temporary logs & caches
+*.log
+*.sqlite3
+*.db-shm
+*.db-wal
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# OS and IDE metadata
+.DS_Store
+Thumbs.db
+.idea/
+bugg.png
+
+# Local uploads
+.vallen/uploads/*
+.vallen/tasks/*
+.vallen/usage.json
+!.vallen/uploads/.gitkeep
+
+# Reference & sub-projects
+9router-costum/
+claude-code-main/
+vallen-ide-implementasi/
+idebuatupdate/
+.git_token

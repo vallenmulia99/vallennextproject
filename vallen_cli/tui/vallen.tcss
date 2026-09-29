@@ -1,0 +1,351 @@
+/* =========================================================
+   VALLEN CLI — Halloween Blood Theme
+   Dark horror vibe with dripping blood effects
+   ========================================================= */
+
+/* Base Screen — pitch black nightmare */
+Screen {
+    background: #0b0f14;
+    color: #f8fafc;
+}
+
+/* ── Header Bar — blood drip effect ───────────────────────── */
+HeaderBar {
+    height: 1;
+    background: #0b0f14;
+    color: #67e8f9;
+    padding: 0 2;
+    layout: horizontal;
+    border-bottom: solid #263241;
+}
+
+#hb-brand {
+    width: auto;
+    text-style: bold;
+    color: #a78bfa;
+}
+
+#hb-project {
+    width: 1fr;
+    padding: 0 1;
+    color: #f8fafc;
+}
+
+#hb-model {
+    width: auto;
+    padding: 0 1;
+    color: #67e8f9;
+    text-style: bold;
+}
+
+#hb-provider {
+    width: auto;
+    padding: 0 1;
+    color: #8b9bad;
+}
+
+#hb-hub {
+    width: auto;
+    color: #a78bfa;
+    text-style: bold;
+}
+
+/* ── Body Layout ─────────────────────────────────────────── */
+#task-strip {
+    height: 1;
+    display: none;
+    padding: 0 2;
+    color: #67e8f9;
+    background: #0d202b;
+    border-bottom: solid #17465a;
+}
+
+#task-strip.active {
+    display: block;
+}
+
+#body {
+    layout: horizontal;
+    height: 1fr;
+    background: #0b0f14;
+}
+
+/* ── Toggleable Sidebar — blood splatter borders ───────────── */
+SidebarWidget {
+    width: 22;
+    background: #0b0f14;
+    border-right: solid #263241;
+    padding: 0 1;
+    overflow-y: auto;
+}
+
+SidebarWidget.-hidden {
+    display: none;
+}
+
+.sidebar-section-title {
+    color: #a78bfa;
+    text-style: bold;
+    padding: 1 0 0 0;
+}
+
+.sidebar-item {
+    color: #8b9bad;
+    padding: 0 0 0 1;
+    height: 1;
+}
+
+.sidebar-tasks-box {
+    color: #8b9bad;
+    padding: 0 0 0 1;
+    height: auto;
+}
+
+.sidebar-item:hover {
+    color: #67e8f9;
+    background: #151d27;
+}
+
+.sidebar-item-active {
+    color: #a78bfa;
+    text-style: bold;
+    padding: 0 0 0 1;
+    height: 1;
+}
+
+/* ── Main Chat Column ────────────────────────────────────── */
+#chat-column {
+    width: 1fr;
+    height: 1fr;
+    background: #0b0f14;
+}
+
+#chat-panel {
+    width: 1fr;
+    height: 1fr;
+    background: #0b0f14;
+    padding: 0 1;
+    overflow-y: auto;
+}
+
+/* ── Input Area — blood-stained input ─────────────────────── */
+ChatInputArea {
+    height: 9;
+    background: #07141c;
+    padding: 1 1 0 1;
+}
+
+#input-prompt-label {
+    color: #8b9bad;
+    height: 0;
+    padding: 0;
+}
+
+#input-terminal-label {
+    height: 1;
+    color: #67e8f9;
+    text-style: bold;
+    padding: 0 1;
+}
+
+#input-water {
+    height: 4;
+    width: 1fr;
+    color: #38bdf8;
+    background: transparent;
+    padding: 0 1;
+    overflow: hidden;
+    text-style: dim;
+}
+
+#main-input {
+    background: #07141c;
+    color: #f8fafc;
+    border: solid #2b6075;
+    padding: 0 1;
+    height: 3;
+    min-height: 3;
+}
+
+#main-input:focus {
+    border: solid #67e8f9;
+}
+
+/* ── Footer Bar — dripping blood ──────────────────────────── */
+FooterBar {
+    height: 1;
+    background: #0b0f14;
+    color: #8b9bad;
+    padding: 0 2;
+    layout: horizontal;
+    border-top: solid #263241;
+}
+
+
+#fb-hints {
+    width: 1fr;
+    color: #8b9bad;
+}
+
+#fb-status {
+    width: auto;
+    text-align: right;
+    color: #a78bfa;
+    text-style: bold;
+}
+
+/* ── Chat Messages & Tool Cards ───────────────────────────── */
+ChatMessage, StreamingMessage, ToolCallCard {
+    height: auto;
+    width: 1fr;
+    margin: 0 0 1 0;
+}
+
+/* ── Message Bubbles — blood-themed ────────────────────────── */
+.msg-user {
+    margin: 1 0 0 0;
+    color: #f8fafc;
+    padding: 0 0 0 1;
+    border-left: solid #67e8f9;
+}
+
+.msg-assistant {
+    margin: 0 0 0 0;
+    color: #f8fafc;
+    padding: 0 0 0 0;
+}
+
+.msg-tool {
+    margin: 0 0 0 0;
+    color: #a78bfa;
+    padding: 0 0 0 0;
+}
+
+.msg-error {
+    margin: 0 0 1 0;
+    color: #67e8f9;
+    padding: 0 0 0 0;
+}
+
+.msg-system {
+    color: #8b9bad;
+    padding: 0 0 0 0;
+    margin: 0 0 1 0;
+}
+
+.code-block {
+    background: #151d27;
+    color: #f8fafc;
+    padding: 0 1;
+    margin: 0 0 0 0;
+    border-left: solid #67e8f9;
+}
+
+/* ── Scrollbars — blood red ───────────────────────────────── */
+ScrollBar {
+    background: #0b0f14;
+}
+
+ScrollBar > .scrollbar--bar {
+    color: #263241;
+    background: #263241;
+}
+
+/* ── Modal Screens ───────────────────────────────────────── */
+ModelPickerScreen, HubModalScreen {
+    align: center middle;
+    background: #000000 90%;
+}
+
+/* ── OpenCode Action Bar — Halloween chips ──────────────────── */
+#input-action-bar {
+    height: 1;
+    margin: 0 0 1 0;
+    layout: horizontal;
+}
+
+#chip-model {
+    height: 1;
+    min-width: 14;
+    background: #151d27;
+    color: #67e8f9;
+    text-style: bold;
+    border: none;
+    padding: 0 1;
+    margin-right: 1;
+}
+#chip-model:hover {
+    background: #17202b;
+    color: #a78bfa;
+}
+
+#chip-mode {
+    height: 1;
+    min-width: 9;
+    border: none;
+    padding: 0 1;
+    margin-right: 1;
+    text-style: bold;
+}
+.chip-mode-build {
+    background: #151d27;
+    color: #67e8f9;
+}
+.chip-mode-plan {
+    background: #1b2430;
+    color: #a78bfa;
+}
+
+#chip-tree {
+    height: 1;
+    min-width: 8;
+    background: #151d27;
+    color: #8b9bad;
+    text-style: bold;
+    border: none;
+    padding: 0 1;
+    margin-right: 1;
+}
+#chip-tree:hover {
+    background: #17202b;
+    color: #67e8f9;
+}
+
+#chip-hub {
+    height: 1;
+    min-width: 8;
+    background: #1b2430;
+    color: #a78bfa;
+    text-style: bold;
+    border: none;
+    padding: 0 1;
+}
+#chip-hub:hover {
+    background: #202b38;
+    color: #FFB84D;
+}
+
+#sb-file-tree {
+    height: 1fr;
+    background: #0b0f14;
+    padding: 0;
+    color: #8b9bad;
+}
+
+ChatTextArea {
+    height: 3;
+    min-height: 3;
+    width: 1fr;
+}
+
+#main-input {
+    color: #f8fafc;
+    background: #07141c;
+}
+
+#main-input .text-area--cursor,
+#main-input .text-area--selection,
+#main-input .text-area--gutter {
+    color: #f8fafc;
+    background: transparent;
+}

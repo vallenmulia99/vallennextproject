@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>⚡ VALLEN IDE — AI Software Engineering Studio</title>
+  <link rel="icon" type="image/jpeg" href="/assets/icon.jpeg" />
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <!-- xterm.js CDN -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css" />
+
+  <!-- Highlight.js for Syntax Highlighting in AI Responses -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark-dimmed.min.css" />
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="/css/theme.css?v=8.0" />
+  <link rel="stylesheet" href="/css/layout.css?v=8.0" />
+</head>
+<body>
+  <div id="app-root">
+
+    <!-- 1. WINDOW TOP BAR (VS CODE APPLICATION HEADER) -->
+    <header id="window-top-bar">
+      <div class="top-bar-left">
+        <img src="/assets/icon.jpeg" alt="Logo" class="app-icon-img" id="btn-show-getting-started" title="Welcome & Getting Started" />
+        <div class="window-menu-bar" id="window-menu-bar">
+          <div class="menu-item" data-menu="file">File</div>
+          <div class="menu-item" data-menu="edit">Edit</div>
+          <div class="menu-item" data-menu="selection">Selection</div>
+          <div class="menu-item" data-menu="view">View</div>
+          <div class="menu-item" data-menu="go">Go</div>
+          <div class="menu-item" data-menu="terminal">Terminal</div>
+          <div class="menu-item" data-menu="help">Help</div>
+        </div>
+        <div class="nav-arrows">
+          <span id="btn-nav-back" title="Go Back (Alt+Left)">←</span>
+          <span id="btn-nav-forward" title="Go Forward (Alt+Right)">→</span>
+        </div>
+      </div>
+
+      <div class="top-bar-center">
+        <div class="top-search-pill" id="global-search-pill" title="Search files, symbols, commands (Ctrl+P)">
+          <span class="search-icon">🔍</span>
+          <span id="top-title-text">vallen [workspace] — Ctrl+P to search</span>
+        </div>
+      </div>
+
+      <div class="top-bar-right">
+        <button class="btn-agent-focus" id="btn-agent-focus" title="Open AI Agent (Ctrl+Shift+L)">
+          <span class="agent-icon">⚡</span>
+          <span>Agent Focus</span>
+        </button>
+        <div class="top-layout-icons">
+          <span class="top-icon-btn" id="btn-toggle-sidebar" title="Toggle Primary Side Bar (Ctrl+B)">◫</span>
+          <span class="top-icon-btn" id="btn-toggle-terminal-top" title="Toggle Panel / Terminal (Ctrl+`)">◰</span>
+          <span class="top-icon-btn" id="btn-toggle-copilot-top" title="Toggle Secondary Side Bar / Copilot">💬</span>
+        </div>
+        <div class="window-controls">
+          <span class="window-ctrl-btn" id="btn-win-min" title="Minimize">─</span>
+          <span class="window-ctrl-btn" id="btn-win-max" title="Toggle Fullscreen">□</span>
+          <span class="window-ctrl-btn window-ctrl-close" id="btn-win-close" title="Close">✕</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Top Menu Dropdowns -->
+    <div id="menu-dropdown-container">
+      <div class="menu-dropdown hidden" id="menu-dropdown-file">
+        <div class="menu-drop-item" id="m-file-new"><span>New File</span><span class="shortcut">Ctrl+N</span></div>
+        <div class="menu-drop-item" id="m-file-open-folder"><span>Open Folder...</span><span class="shortcut">Ctrl+O</span></div>
+        <div class="menu-drop-divider"></div>
+        <div class="menu-drop-item" id="m-file-save"><span>Save</span><span class="shortcut">Ctrl+S</span></div>
+        <div class="menu-drop-item" id="m-file-close"><span>Close Tab</span><span class="shortcut">Ctrl+W</span></div>
+      </div>
+      <div class="menu-dropdown hidden" id="menu-dropdown-edit">
+        <div class="menu-drop-item" id="m-edit-undo"><span>Undo</span><span class="shortcut">Ctrl+Z</span></div>
+        <div class="menu-drop-item" id="m-edit-redo"><span>Redo</span><span class="shortcut">Ctrl+Y</span></div>
+        <div class="menu-drop-divider"></div>
+        <div class="menu-drop-item" id="m-edit-cut"><span>Cut</span><span class="shortcut">Ctrl+X</span></div>
+        <div class="menu-drop-item" id="m-edit-copy"><span>Copy</span><span class="shortcut">Ctrl+C</span></div>
+        <div class="menu-drop-item" id="m-edit-paste"><span>Paste</span><span class="shortcut">Ctrl+V</span></div>
+      </div>
+      <div class="menu-dropdown hidden" id="menu-dropdown-selection">
+        <div class="menu-drop-item" id="m-sel-all"><span>Select All</span><span class="shortcut">Ctrl+A</span></div>
+      </div>
+      <div class="menu-dropdown hidden" id="menu-dropdown-view">
+        <div class="menu-drop-item" id="m-view-explorer"><span>Explorer</span><span class="shortcut">Ctrl+Shift+E</span></div>
+        <div class="menu-drop-item" id="m-view-search"><span>Search</span><span class="shortcut">Ctrl+Shift+F</span></div>
+        <div class="menu-drop-item" id="m-view-git"><span>Source Control</span><span class="shortcut">Ctrl+Shift+G</span></div>
+        <div class="menu-drop-divider"></div>
+        <div class="menu-drop-item" id="m-view-terminal"><span>Toggle Terminal</span><span class="shortcut">Ctrl+`</span></div>
+        <div class="menu-drop-item" id="m-view-copilot"><span>Toggle AI Copilot</span><span class="shortcut">Ctrl+Shift+L</span></div>
+      </div>
+      <div class="menu-dropdown hidden" id="menu-dropdown-go">
+        <div class="menu-drop-item" id="m-go-file"><span>Go to File...</span><span class="shortcut">Ctrl+P</span></div>
+      </div>
+      <div class="menu-dropdown hidden" id="menu-dropdown-terminal">
+        <div class="menu-drop-item" id="m-term-toggle"><span>Toggle Terminal</span><span class="shortcut">Ctrl+`</span></div>
+        <div class="menu-drop-item" id="m-term-clear"><span>Clear Terminal</span></div>
+      </div>
+      <div class="menu-dropdown hidden" id="menu-dropdown-help">
+        <div class="menu-drop-item" id="m-help-welcome"><span>Welcome</span></div>
+        <div class="menu-drop-item" id="m-help-shortcuts"><span>Keyboard Shortcuts</span></div>
+        <div class="menu-drop-divider"></div>
+        <div class="menu-drop-item" id="m-help-about"><span>About VALLEN IDE</span></div>
+      </div>
+    </div>
+
+    <!-- 2. MAIN WORKSPACE CONTAINER -->
+    <div id="workspace-main">
+
+      <!-- Extreme Left Activity Bar -->
+      <aside id="activity-bar">
+        <div class="activity-group-top">
+          <div class="act-btn active" id="act-explorer" title="Explorer (Ctrl+Shift+E)">📁</div>
+          <div class="act-btn" id="act-search" title="Search (Ctrl+Shift+F)">🔍</div>
+          <div class="act-btn" id="act-git" title="Source Control (Ctrl+Shift+G)">
+            ⑂
+            <span class="act-badge hidden" id="act-git-badge">0</span>
+          </div>
+          <div class="act-btn" id="act-debug" title="Run and Debug (Ctrl+Shift+D)">▶</div>
+          <div class="act-btn" id="act-skills" title="Extensions & Skills">
+            🧩
+            <span class="act-badge">3K+</span>
+          </div>
+          <div class="act-btn" id="act-agent" title="VALLEN AI Agent (Ctrl+Shift+L)">⚡</div>
+          <div class="act-btn" id="act-cihuy" title="⚡ VALLEN CIHUY — PRD & System Blueprint Studio" onclick="window.open('/cihuy', '_blank')">✨</div>
+        </div>
+
+        <div class="activity-group-bottom">
+          <div class="user-avatar-wrap" id="act-account" title="Account (Pro Active)">
+            <span style="font-size: 13px;">👤</span>
+            <div class="user-avatar-badge"></div>
+          </div>
+          <div class="act-btn" id="act-settings" title="Settings (Ctrl+,)">⚙️</div>
+        </div>
+      </aside>
+
+      <!-- Primary Sidebar (Explorer / Search / Git / Skills) -->
+      <section id="primary-sidebar">
+        <!-- View 1: Explorer -->
+        <div class="sidebar-content-view" id="view-files">
+          <div class="sidebar-title-bar">
+            <span id="sidebar-project-title">EXPLORER</span>
+            <div class="sidebar-title-actions">
+              <button class="sidebar-icon-btn" id="btn-new-file" title="New File">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M9 1H3a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7L9 1zm4 12H3V3h5v5h5v5zm-2-2H9v2H7v-2H5V9h2V7h2v2h2v2z"/></svg>
+              </button>
+              <button class="sidebar-icon-btn" id="btn-new-folder" title="New Folder">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M7 2l2 2h5a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h5zm0 1H2a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8.5L7 3zm2 5h2v2h-2v2H8v-2H6V9h2V7h1v1z"/></svg>
+              </button>
+              <button class="sidebar-icon-btn" id="btn-refresh-tree" title="Refresh Explorer">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M13.65 2.35A7.958 7.958 0 0 0 8 0a8 8 0 1 0 8 8h-2a6 6 0 1 1-1.76-4.24l-2.83 2.83H16V0l-2.35 2.35z"/></svg>
+              </button>
+              <button class="sidebar-icon-btn" id="btn-collapse-tree" title="Collapse Folders in Explorer">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M1 8h14v1H1V8zm3-5h8v1H4V3zm2 10h4v1H6v-1z"/></svg>
+              </button>
+            </div>
+          </div>
+          <div id="file-tree-container" class="file-tree-container"></div>
+        </div>
+
+        <!-- View 2: Search -->
+        <div class="sidebar-content-view hidden" id="view-search">
+          <div class="sidebar-title-bar">
+            <span>SEARCH IN FILES</span>
+          </div>
+          <div style="padding: 10px;">
+            <input type="text" id="search-input" class="search-input" placeholder="Search files (Enter to search)..." />
+          </div>
+          <div id="search-results" class="search-results-container"></div>
+        </div>
+
+        <!-- View 3: Git Source Control -->
+        <div class="sidebar-content-view hidden" id="view-git">
+          <div class="sidebar-title-bar">
+            <span>SOURCE CONTROL</span>
+            <span class="badge" id="git-changes-count">0</span>
+          </div>
+          <div style="padding: 10px; display: flex; flex-direction: column; gap: 8px;">
+            <textarea id="git-commit-msg" placeholder="Message (Ctrl+Enter to commit)"></textarea>
+            <button id="btn-git-commit" class="btn-primary">Commit Changes</button>
+            <div class="sidebar-section-header">CHANGES</div>
+            <div id="git-changed-list" class="git-changed-list"></div>
+          </div>
+        </div>
+
+        <!-- View 4: Skills Registry -->
+        <div class="sidebar-content-view hidden" id="view-skills">
+          <div class="sidebar-title-bar">
+            <span>AGENT SKILLS & EXTENSIONS</span>
+          </div>
+          <div id="skills-list-container" class="skills-list-container"></div>
+        </div>
+      </section>
+
+      <!-- Drag Resizer: Sidebar to Center -->
+      <div class="gutter-resizer-col" id="resizer-sidebar" title="Drag to resize sidebar"></div>
+
+      <!-- Center Workspace Area -->
+      <section id="center-workspace">
+        <!-- Tab Bar (VS Code Styling) -->
+        <div id="editor-tab-bar">
+          <div class="vscode-tab active" id="tab-getting-started">
+            <span class="tab-icon">⚡</span>
+            <span class="tab-title">Welcome</span>
+            <span class="tab-close-icon">✕</span>
+          </div>
+        </div>
+
+        <!-- Breadcrumbs Navigation Bar -->
+        <div id="editor-breadcrumbs" class="editor-breadcrumbs hidden">
+          <span class="bc-item bc-root" id="bc-root">workspace</span>
+          <span class="bc-sep">›</span>
+          <span class="bc-item bc-file" id="bc-file">welcome</span>
+        </div>
+
+        <!-- Agent Diff Review Banner -->
+        <div id="diff-banner">
+          <div class="diff-banner-info">
+            <span class="diff-agent-label">🤖 Agent Edit:</span>
+            <span id="diff-file-name" class="diff-file-name">file.py</span>
+            <span id="diff-additions" class="diff-badge-add">+0</span>
+            <span id="diff-deletions" class="diff-badge-del">-0</span>
+          </div>
+          <div class="diff-banner-actions">
+            <button id="btn-diff-accept" class="btn-diff-accept">✓ Accept</button>
+            <button id="btn-diff-reject" class="btn-diff-reject">✕ Revert</button>
+          </div>
+        </div>
+
+        <!-- 🌟 Welcome / Getting Started View 🌟 -->
+        <div id="getting-started-view">
+          <div class="gs-container">
+            <div class="gs-header">
+              <div class="gs-mascot-row">
+                <img src="/assets/icon.jpeg" alt="VALLEN" class="gs-mascot-icon" />
+                <span class="gs-title">VALLEN IDE</span>
+              </div>
+              <p class="gs-tagline">Autonomous AI Software Engineering Agent & Studio for Developers.</p>
+            </div>
+
+            <div class="gs-section-label">Start</div>
+            <button class="btn-open-project" id="btn-gs-open-project">
+              📂 Open Folder / Project
+            </button>
+
+            <!-- Recent projects box -->
+            <div class="gs-recent-box">
+              <div class="gs-recent-header" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+                <span class="gs-recent-title">Recent Projects</span>
+                <button type="button" class="btn-clear-recents" id="btn-clear-recent-projects" title="Clear all recent projects history" style="background: transparent; border: 1px solid var(--border-subtle); color: var(--text-dim); font-size: 10px; padding: 2px 8px; border-radius: 4px; cursor: pointer; transition: all 0.15s ease;">🗑️ Clear All</button>
+              </div>
+              <div class="gs-recent-items" id="gs-recent-projects-list"></div>
+            </div>
+
+            <div class="gs-action-row">
+              <button class="btn-gs-secondary" id="btn-gs-clone">
+                <span>⑂</span>
+                <span>Clone Repository</span>
+              </button>
+              <button class="btn-gs-secondary" id="btn-gs-connect">
+                <span>⤢</span>
+                <span>Remote / SSH Connect</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 🌟 Center Shortcuts Watermark Screen 🌟 -->
+        <div id="center-shortcuts-view" class="hidden">
+          <div class="gs-mascot-row">
+            <img src="/assets/icon.jpeg" alt="VALLEN" class="gs-mascot-icon" />
+            <span class="gs-title">VALLEN</span>
+          </div>
+
+          <div class="shortcuts-table">
+            <div class="shortcut-row">
+              <span>Show All Commands</span>
+              <div class="shortcut-keys"><span class="shortcut-key-badge">Ctrl</span><span class="shortcut-key-badge">Shift</span><span class="shortcut-key-badge">P</span></div>
+            </div>
+            <div class="shortcut-row">
+              <span>Go to File</span>
+              <div class="shortcut-keys"><span class="shortcut-key-badge">Ctrl</span><span class="shortcut-key-badge">P</span></div>
+            </div>
+            <div class="shortcut-row">
+              <span>Find in Files</span>
+              <div class="shortcut-keys"><span class="shortcut-key-badge">Ctrl</span><span class="shortcut-key-badge">Shift</span><span class="shortcut-key-badge">F</span></div>
+            </div>
+            <div class="shortcut-row">
+              <span>Focus AI Agent</span>
+              <div class="shortcut-keys"><span class="shortcut-key-badge">Ctrl</span><span class="shortcut-key-badge">Shift</span><span class="shortcut-key-badge">L</span></div>
+            </div>
+            <div class="shortcut-row">
+              <span>Toggle Terminal</span>
+              <div class="shortcut-keys"><span class="shortcut-key-badge">Ctrl</span><span class="shortcut-key-badge">`</span></div>
+            </div>
+            <div class="shortcut-row">
+              <span>Toggle Side Bar</span>
+              <div class="shortcut-keys"><span class="shortcut-key-badge">Ctrl</span><span class="shortcut-key-badge">B</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Monaco Editor Viewport -->
+        <div id="monaco-viewport" class="hidden">
+          <div id="editor-container"></div>
+          <div id="diff-editor-container" class="hidden"></div>
+        </div>
+
+        <!-- Bottom Linux Terminal Panel (VS Code Panel Tabs) -->
+        <div id="bottom-terminal-panel" class="collapsed">
+          <div class="terminal-drag-bar" id="terminal-drag-bar" title="Drag to resize panel"></div>
+          <div class="term-header">
+            <div class="term-tabs" style="display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; overflow-x: auto;">
+              <span class="term-tab active" id="term-tab-terminal">TERMINAL</span>
+              <div id="term-subtabs-list" class="term-subtabs-list"></div>
+              <button type="button" class="btn-term-subtab-add" id="btn-add-terminal" title="New Terminal (+)">+</button>
+              <span class="term-tab" id="term-tab-output">OUTPUT</span>
+              <span class="term-tab" id="term-tab-problems">PROBLEMS</span>
+            </div>
+            <div class="term-actions">
+              <span class="top-icon-btn" id="btn-clear-terminal" title="Clear Terminal">🗑️</span>
+              <span class="top-icon-btn" id="btn-maximize-terminal" title="Maximize Panel">⌃</span>
+              <span class="top-icon-btn" id="btn-close-terminal" title="Close Panel (Ctrl+`)">✕</span>
+            </div>
+          </div>
+          <div id="terminal-mount">
+            <div id="terminal-container" style="position: relative; width: 100%; height: 100%;"></div>
+            <div id="panel-output-container" class="hidden" style="padding: 12px; font-family: var(--font-mono); font-size: 12px; color: var(--text-main); height: 100%; overflow-y: auto;">
+              <div style="color: var(--text-dim); margin-bottom: 8px;">[VALLEN IDE System & Build Output]</div>
+              <div id="panel-output-content" style="line-height: 1.6;">
+                <div>⚡ VALLEN Studio Server: http://127.0.0.1:8080</div>
+                <div style="color: var(--accent-green);">✓ Core Agents & Unified Diff Engine Active</div>
+                <div>🌿 Git Worktree & Session Database Synced</div>
+              </div>
+            </div>
+            <div id="panel-problems-container" class="hidden" style="padding: 12px; font-family: var(--font-mono); font-size: 12px; color: var(--text-main); height: 100%; overflow-y: auto;">
+              <div style="color: var(--text-dim); margin-bottom: 8px;">[Diagnostics & Problems]</div>
+              <div id="panel-problems-content">
+                <div style="color: var(--accent-green); font-size: 12px;">✓ No workspace diagnostics or syntax errors reported.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Drag Resizer: Center to Copilot -->
+      <div class="gutter-resizer-col" id="resizer-copilot" title="Drag to resize copilot"></div>
+
+      <!-- 🌟 3. RIGHT COPILOT PANEL (VS CODE CHAT / SECONDARY SIDEBAR) 🌟 -->
+      <aside id="copilot-panel">
+        <div class="copilot-top-tab">
+          <div class="copilot-session-chip" id="copilot-session-chip-wrap" title="Current Workspace & Chat Session">
+            <span class="copilot-chip-icon">⚡</span>
+            <span id="copilot-project-label" style="color: var(--accent-purple-light); font-weight: 700;">WORKSPACE</span>
+            <span style="color: var(--text-dim); font-size: 11px;">›</span>
+            <span id="copilot-session-title" style="max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">New Session</span>
+          </div>
+          <div class="copilot-top-actions">
+            <span class="top-icon-btn" id="btn-chat-history" title="Chat History for this Workspace">≡</span>
+            <span class="top-icon-btn" id="btn-new-chat-session" title="New Chat Session">+</span>
+            <span class="top-icon-btn" id="btn-clear-chat" title="Clear Chat Messages">🗑</span>
+            <span class="top-icon-btn" id="btn-close-copilot" title="Close Copilot Panel">✕</span>
+          </div>
+        </div>
+
+        <div class="copilot-body">
+          <div class="copilot-welcome-hero" id="copilot-welcome-hero">
+            <img src="/assets/icon.jpeg" alt="VALLEN" class="copilot-mascot" />
+            <h2 class="copilot-gradient-title">VALLEN Agent</h2>
+            <p class="copilot-tagline">Autonomous coding, refactoring, and project intelligence.</p>
+          </div>
+
+          <!-- Workflows Cards -->
+          <div class="copilot-workflows" id="copilot-workflows-list">
+            <div class="wf-header-row">
+              <span>Quick Workflows</span>
+            </div>
+            
+            <div class="wf-card" onclick="window.copilot.selectWorkflow('Spec: Plan and generate full architecture')">
+              <span class="wf-icon">📑</span>
+              <div class="wf-info">
+                <span class="wf-title">Architecture Spec</span>
+                <span class="wf-desc">Plan and structure features before coding</span>
+              </div>
+            </div>
+
+            <div class="wf-card" onclick="window.copilot.selectWorkflow('Bug Fix: Investigate, diagnose root cause, and patch')">
+              <span class="wf-icon">🪲</span>
+              <div class="wf-info">
+                <span class="wf-title">Bug Fix</span>
+                <span class="wf-desc">Diagnose errors and write verified patches</span>
+              </div>
+            </div>
+
+            <div class="wf-card" onclick="window.copilot.selectWorkflow('Refactor: Clean code, optimize performance, and type-hint')">
+              <span class="wf-icon">⚡</span>
+              <div class="wf-info">
+                <span class="wf-title">Clean & Refactor</span>
+                <span class="wf-desc">Optimize code and maintain strict standards</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Live Chat Stream Messages -->
+          <div id="copilot-messages-stream"></div>
+        </div>
+
+        <!-- Floating Chat Input Box -->
+        <div class="copilot-input-container">
+          <!-- Live Agent Activity & Progress Checklist (Antigravity/Claude style) -->
+          <div id="agent-progress-card" class="agent-progress-card hidden">
+            <div class="progress-card-header" id="progress-card-header" title="Click to expand/collapse steps">
+              <div class="progress-header-left">
+                <span class="pulse-beacon" id="progress-pulse-beacon"></span>
+                <span id="progress-status-label" class="progress-status-label">Analyzing & Planning...</span>
+              </div>
+              <div class="progress-header-right">
+                <span id="progress-step-counter" class="progress-step-counter">0/0</span>
+                <span class="progress-chevron-btn" id="btn-toggle-progress-steps">▾</span>
+              </div>
+            </div>
+            <div class="progress-steps-list" id="progress-steps-list"></div>
+          </div>
+
+          <div class="floating-chat-card">
+            <!-- Top Sliding Switches Bar -->
+            <div class="chat-toggles-header">
+              <div class="switch-item" id="autopilot-switch" title="Autopilot: Automatically execute approved tool calls">
+                <span class="switch-text">⚡ Autopilot</span>
+                <div class="slider-track active">
+                  <div class="slider-thumb"></div>
+                </div>
+              </div>
+              <div class="switch-item" id="always-accept-switch" title="Always Accept: Auto-apply and accept all file diffs">
+                <span class="switch-text">✓ Always Accept</span>
+                <div class="slider-track active">
+                  <div class="slider-thumb"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Quick Continuation & Action Chips -->
+            <div class="chat-quick-chips" id="chat-quick-chips">
+              <button type="button" class="quick-chip-btn chip-lanjut" onclick="window.copilot.sendLanjutPrompt()" title="Lanjut mengerjakan task sampai tuntas">⚡ Lanjut (Continue)</button>
+              <button type="button" class="quick-chip-btn" onclick="window.copilot.sendQuickPrompt('Jalankan build atau test script di project ini dan laporkan hasilnya.')" title="Jalankan build dan test">🔨 Build & Test</button>
+              <button type="button" class="quick-chip-btn" onclick="window.copilot.sendQuickPrompt('Cek git status dan file apa saja yang telah diubah.')" title="Cek perubahan git">📊 Git Status</button>
+            </div>
+
+            <!-- Attachments Preview Area -->
+            <div id="chat-attachments-preview" class="chat-attachments-preview hidden"></div>
+
+            <!-- Textarea -->
+            <textarea id="chat-prompt-textarea" placeholder="Ask a question, request code, or use /commands... (Enter to send)"></textarea>
+
+            <!-- Bottom Toolbar: Attach icon, Mode & Model, Single Smart Action button -->
+            <div class="chat-card-toolbar">
+              <div class="toolbar-left">
+                <!-- Attach file button -->
+                <span class="tool-btn-icon" id="btn-attach-file" title="Attach file or photo (or paste Ctrl+V)">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                </span>
+                <input type="file" id="chat-file-input" multiple style="display: none;" />
+
+                <!-- Mode select dropdown -->
+                <select class="styled-pill-select" id="agent-mode-dropdown" title="Agent Execution Mode">
+                  <option value="auto">Auto</option>
+                  <option value="agent">Agent</option>
+                  <option value="ask">Ask</option>
+                </select>
+
+                <!-- Model select dropdown -->
+                <select class="styled-pill-select model-select-pill" id="model-select" title="Active AI Model">
+                  <option value="default">Default</option>
+                </select>
+              </div>
+
+              <div class="toolbar-right">
+                <!-- Single Smart Button (↑ Send / ■ Stop) -->
+                <span class="btn-smart-action" id="btn-submit-prompt" title="Send Message (Enter)">
+                  <svg class="icon-send" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
+                  <span class="icon-stop hidden">■</span>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+    </div>
+
+    <!-- 3. STATUS BAR (AUTHENTIC VS CODE STATUS BAR) -->
+    <footer id="status-bar">
+      <div class="status-left">
+        <div class="status-link" id="status-branch" title="Git Branch">
+          <span>🌿</span>
+          <span id="status-branch-name">main*</span>
+        </div>
+        <div class="status-link" id="status-git-changes" title="Source Control Changes">
+          <span>±</span>
+          <span id="status-changes-badge">0</span>
+        </div>
+        <div class="status-link" id="status-problems" title="Problems & Diagnostics">
+          <span>⊗ 0</span>
+          <span>⚠ 0</span>
+        </div>
+      </div>
+      <div class="status-right">
+        <div class="status-link" id="status-cursor" title="Cursor Position">Ln 1, Col 1</div>
+        <div class="status-link" id="status-indent" title="Indentation">Spaces: 4</div>
+        <div class="status-link" id="status-encoding" title="File Encoding">UTF-8</div>
+        <div class="status-link" id="status-eol" title="End of Line">LF</div>
+        <div class="status-link" id="status-language" title="Language Mode">Plain Text</div>
+        <div class="status-link" id="status-agent" title="VALLEN AI Agent Engine">
+          <span style="color: var(--accent-purple); font-weight: 700;">⚡ VALLEN PRO</span>
+        </div>
+        <div class="status-link" id="status-notifications" title="Notifications">🔔</div>
+      </div>
+    </footer>
+
+    <!-- Folder Picker Modal Dialog -->
+    <div id="folder-picker-backdrop" class="modal-backdrop hidden">
+      <div class="folder-picker-modal">
+        <div class="modal-header">
+          <div class="modal-title">
+            <span>📁</span>
+            <span>Open Folder / Project</span>
+          </div>
+          <button class="modal-close-btn" id="btn-close-folder-picker">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="folder-picker-path-bar">
+            <input type="text" id="folder-picker-input" placeholder="/path/to/project" />
+            <button class="btn-secondary" id="btn-folder-picker-go">Go</button>
+          </div>
+          <div class="folder-picker-list" id="folder-picker-list"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" id="btn-cancel-folder-picker">Cancel</button>
+          <button class="btn-primary" id="btn-confirm-folder-picker">Select This Folder</button>
+        </div>
+      </div>
+    </div>
+
+        <!-- Session History Dropdown Modal -->
+    <div id="session-history-backdrop" class="modal-backdrop hidden">
+      <div class="session-history-modal" style="width: 480px; background: var(--bg-card); border: 1px solid var(--border-light); border-radius: var(--radius-md); box-shadow: 0 15px 40px rgba(0,0,0,0.8); overflow: hidden;">
+        <div class="modal-header">
+          <div class="modal-title">
+            <span>💬</span>
+            <span id="history-modal-title">Chat History for this Project</span>
+          </div>
+          <button class="modal-close-btn" id="btn-close-history-modal">✕</button>
+        </div>
+        <div class="modal-body" style="padding: 10px;">
+          <div id="session-history-list" style="max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings Modal Dialog -->
+    <div id="settings-modal-backdrop" class="modal-backdrop hidden">
+      <div class="settings-modal" style="width: 520px; background: var(--bg-card); border: 1px solid var(--border-light); border-radius: var(--radius-md); box-shadow: 0 15px 40px rgba(0,0,0,0.8); overflow: hidden;">
+        <div class="modal-header">
+          <div class="modal-title">
+            <span>⚙️</span>
+            <span>Settings & Preferences</span>
+          </div>
+          <button class="modal-close-btn" id="btn-close-settings-modal">✕</button>
+        </div>
+        <div class="modal-body" style="padding: 16px; display: flex; flex-direction: column; gap: 14px; max-height: 70vh; overflow-y: auto;">
+          <div class="settings-section">
+            <label style="font-weight: 600; font-size: 12px; color: var(--accent-purple-light); display: block; margin-bottom: 4px;">Editor Font Size (px)</label>
+            <input type="number" id="setting-font-size" value="13" min="10" max="24" style="width: 100%; padding: 6px 10px; background: var(--bg-input); border: 1px solid var(--border-subtle); color: #fff; border-radius: 4px;" />
+          </div>
+          <div class="settings-section">
+            <label style="font-weight: 600; font-size: 12px; color: var(--accent-purple-light); display: block; margin-bottom: 4px;">Editor Font Family</label>
+            <input type="text" id="setting-font-family" value="'JetBrains Mono', 'Fira Code', monospace" style="width: 100%; padding: 6px 10px; background: var(--bg-input); border: 1px solid var(--border-subtle); color: #fff; border-radius: 4px;" />
+          </div>
+          <div class="settings-section">
+            <label style="font-weight: 600; font-size: 12px; color: var(--accent-purple-light); display: block; margin-bottom: 4px;">AI Active Model</label>
+            <select id="setting-model-select" style="width: 100%; padding: 6px 10px; background: var(--bg-input); border: 1px solid var(--border-subtle); color: #fff; border-radius: 4px;"></select>
+          </div>
+          <div class="settings-section">
+            <label style="font-weight: 600; font-size: 12px; color: var(--accent-purple-light); display: block; margin-bottom: 4px;">Autopilot Default</label>
+            <select id="setting-default-autopilot" style="width: 100%; padding: 6px 10px; background: var(--bg-input); border: 1px solid var(--border-subtle); color: #fff; border-radius: 4px;">
+              <option value="true">Enabled (Auto-execute approved tool actions)</option>
+              <option value="false">Disabled (Ask for approval)</option>
+            </select>
+          </div>
+          <div class="settings-section">
+            <label style="font-weight: 600; font-size: 12px; color: var(--accent-purple-light); display: block; margin-bottom: 4px;">Auto-Accept File Diffs</label>
+            <select id="setting-default-autoaccept" style="width: 100%; padding: 6px 10px; background: var(--bg-input); border: 1px solid var(--border-subtle); color: #fff; border-radius: 4px;">
+              <option value="true">Enabled (Auto-apply modified files)</option>
+              <option value="false">Disabled (Review each diff)</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer" style="padding: 10px 16px; display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--border-subtle);">
+          <button class="btn-secondary" id="btn-cancel-settings">Cancel</button>
+          <button class="btn-primary" id="btn-save-settings">Save & Apply</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Floating Command Palette (Ctrl+P / Ctrl+Shift+P) -->
+    <div id="command-palette-backdrop" class="modal-backdrop hidden">
+      <div id="command-palette-modal">
+        <div class="palette-input-wrap">
+          <span class="palette-search-icon">🔍</span>
+          <input type="text" id="palette-input" placeholder="Type a file name or command... (Esc to close)" />
+        </div>
+        <div id="palette-results"></div>
+      </div>
+    </div>
+
+    <!-- File Context Menu -->
+    <div id="file-context-menu" class="hidden">
+      <div class="menu-item" id="ctx-open">📂 Open</div>
+      <div class="menu-item" id="ctx-new-file">📄 New File Here...</div>
+      <div class="menu-item" id="ctx-new-folder">📁 New Folder Here...</div>
+      <div class="menu-item" id="ctx-rename">✏️ Rename</div>
+      <div class="menu-item" id="ctx-copy-path">📋 Copy Relative Path</div>
+      <div class="menu-item" id="ctx-delete" style="color: var(--accent-red);">🗑️ Delete</div>
+    </div>
+
+  </div>
+
+  <!-- CDN Script Dependencies -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+
+  <!-- App Modules -->
+  <script src="/js/editor.js?v=8.0"></script>
+  <script src="/js/explorer.js?v=8.0"></script>
+  <script src="/js/terminal.js?v=8.0"></script>
+  <script src="/js/copilot.js?v=8.0"></script>
+  <script src="/js/welcome.js?v=8.0"></script>
+  <script src="/js/palette.js?v=8.0"></script>
+  <script src="/js/context_menu.js?v=8.0"></script>
+  <script src="/js/app.js?v=8.0"></script>
+</body>
+</html>
