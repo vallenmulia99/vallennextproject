@@ -99,16 +99,12 @@ async def check_file_syntax(file_path: str | Path) -> tuple[bool, str | None]:
     # 1. Python syntax check
     if ext in (".py", ".pyi"):
         try:
-            proc = await asyncio.create_subprocess_exec(
-                "python3", "-m", "py_compile", str(path),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=5.0)
-            if proc.returncode != 0:
-                err_msg = stderr.decode(errors="replace").strip()
-                return False, err_msg
+            import ast
+            raw_bytes = await asyncio.to_thread(path.read_bytes)
+            ast.parse(raw_bytes, filename=str(path))
             return True, None
+        except SyntaxError as e:
+            return False, f"SyntaxError in {path.name}:{e.lineno}:{e.offset}: {e.msg}"
         except Exception:
             return True, None
 

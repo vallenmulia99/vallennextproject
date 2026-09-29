@@ -117,3 +117,26 @@ def test_image_tool_result_preserves_multimodal_blocks():
     assert api_msgs[-1].content == img_data
     assert api_msgs[-1].to_api_dict()["content"][0]["type"] == "image_url"
 
+
+@pytest.mark.asyncio
+async def test_check_file_syntax_python_ast_no_pycache(tmp_path):
+    from vallen_cli.core.format import check_file_syntax
+
+    # Valid python file
+    valid_file = tmp_path / "valid.py"
+    valid_file.write_text("def hello():\n    return 42\n")
+    ok, err = await check_file_syntax(valid_file)
+    assert ok is True
+    assert err is None
+    # Must NOT create __pycache__ directory
+    assert not (tmp_path / "__pycache__").exists()
+
+    # Invalid python file
+    bad_file = tmp_path / "bad.py"
+    bad_file.write_text("def broken(\n")
+    ok_bad, err_bad = await check_file_syntax(bad_file)
+    assert ok_bad is False
+    assert err_bad is not None
+    assert "SyntaxError" in err_bad
+
+
