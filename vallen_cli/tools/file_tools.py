@@ -328,7 +328,7 @@ class WriteTool(BaseTool):
 
             # Formatters may change the file. Track the bytes that actually
             # remain on disk so diff and revert state match reality.
-            after_content = await asyncio.to_thread(p.read_text, errors="replace")
+            after_content, _ = read_text_preserve(p)
             tracker.record_write(str(p), before_content, after_content)
 
             size = len(content.encode("utf-8"))
@@ -561,8 +561,9 @@ class EditTool(BaseTool):
                 lines[index] = replacement
                 new_content = "".join(lines)
                 write_text_preserve(p, new_content, file_newline)
-                get_file_tracker().record_edit(str(p), content, new_content)
                 mark_file_read(str(p))
+                after_content, _ = read_text_preserve(p)
+                get_file_tracker().record_write(str(p), content, after_content)
                 return ToolResult(success=True, output=f"✓ Updated {p.name}:{startLine} [{actual_hash}]", data={"path": str(p), "line": startLine, "hash": actual_hash})
 
             # Enforce read-before-edit after validating an explicit stale-file
@@ -588,9 +589,6 @@ class EditTool(BaseTool):
                     error=err_msg or f"oldString not found in {p.name}.",
                 )
 
-            tracker = get_file_tracker()
-            tracker.record_edit(str(p), content, new_content)
-
             write_text_preserve(p, new_content, file_newline)
             mark_file_read(str(p))
 
@@ -604,6 +602,11 @@ class EditTool(BaseTool):
                     syntax_warning = f"\n\n⚠️ [Syntax Error detected in {p.name}]:\n{syn_err}\nPlease review and fix this syntax error immediately."
             except Exception:
                 pass
+
+            # Formatters may change the file. Track the bytes that actually
+            # remain on disk so diff and revert state match reality.
+            after_content, _ = read_text_preserve(p)
+            get_file_tracker().record_write(str(p), content, after_content)
 
             # Generate short diff summary
             diff_lines = list(difflib.unified_diff(

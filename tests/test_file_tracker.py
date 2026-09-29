@@ -47,3 +47,27 @@ def test_created_then_deleted_file_has_no_remaining_change():
     tracker.record_write("temporary.py", before=None, after="x = 1\n")
     tracker.record_delete("temporary.py", before="x = 1\n")
     assert tracker.changes == []
+
+
+@pytest.mark.asyncio
+async def test_edit_tool_tracks_post_format_change_once(tmp_path):
+    from vallen_cli.tools.file_tools import ReadTool, EditTool
+    from vallen_cli.core.file_tracker import get_file_tracker
+    from vallen_cli.core.workspace import get_workspace
+
+    get_workspace().new_project(str(tmp_path))
+    test_file = tmp_path / "foo.py"
+    test_file.write_text("x = 1\n")
+
+    tracker = get_file_tracker()
+    tracker.reset()
+
+    await ReadTool().execute(filePath=str(test_file))
+    await EditTool().execute(filePath=str(test_file), oldString="x = 1", newString="x = 2")
+
+    # Should have recorded exactly 1 change
+    changes = tracker.changes
+    assert len(changes) == 1
+    assert changes[0].before == "x = 1\n"
+    assert changes[0].after == "x = 2\n"
+

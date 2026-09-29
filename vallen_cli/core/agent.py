@@ -625,7 +625,7 @@ async def _snapshot_before(tool_name: str, args: dict[str, Any]) -> str | None:
 
 
 def _record_change(tracker, tool_name: str, args: dict[str, Any], before: str | None, result) -> None:
-    """Record file changes in the tracker after a tool executes."""
+    """Handle cache invalidation and tracking after a tool executes."""
     if not result.success:
         return
     path = args.get("filePath") or args.get("path", "")
@@ -633,18 +633,8 @@ def _record_change(tracker, tool_name: str, args: dict[str, Any], before: str | 
         return
     from ..core.workspace import resolve_workspace_path
     p = resolve_workspace_path(path)
-    if tool_name in ("write", "write_file"):
-        try:
-            after = p.read_text(errors="replace") if p.exists() else ""
-        except Exception:
-            after = args.get("content", "")
-        tracker.record_write(str(p), before, after)
-    elif tool_name in ("edit", "edit_file"):
-        try:
-            after = p.read_text(errors="replace") if p.exists() else ""
-        except Exception:
-            after = ""
-        tracker.record_write(str(p), before, after)
-        # Invalidate skills cache if a SKILL.md file was modified
-        if p.name == "SKILL.md" or p.name.endswith("SKILL.md"):
-            invalidate_cache(str(p.parent))
+    # File tools (write, edit, apply_patch) record changes directly to tracker
+    # after formatting. Here we only invalidate skills cache if needed.
+    if p.name == "SKILL.md" or p.name.endswith("SKILL.md"):
+        invalidate_cache(str(p.parent))
+
