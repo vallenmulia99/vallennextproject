@@ -533,7 +533,13 @@ async def run_agent(
                         "success": result.success,
                     }))
 
-                session.add_tool_result(tool_call_id, tool_name, output)
+                # Pass multimodal blocks if present (e.g. image read), else output string
+                tool_msg_content = (
+                    result.data
+                    if isinstance(result.data, list) and any(isinstance(b, dict) and b.get("type") == "image_url" for b in result.data)
+                    else output
+                )
+                session.add_tool_result(tool_call_id, tool_name, tool_msg_content)
 
                 if doom_triggered:
                     if on_event:

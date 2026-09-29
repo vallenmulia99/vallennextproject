@@ -93,3 +93,27 @@ def test_astra_temperature_is_capped_for_reliable_tool_use():
     from vallen_cli.core.agent import effective_temperature
     assert effective_temperature(0.7, "gpt-6-astra") == 0.3
     assert effective_temperature(0.1, "gpt-6-astra") == 0.1
+
+
+def test_image_tool_result_preserves_multimodal_blocks():
+    from vallen_cli.core.session import SessionManager
+    from vallen_cli.tools.base import ToolResult
+
+    # Simulate ReadTool returning image data
+    img_data = [
+        {"type": "image_url", "image_url": {"url": "data:image/png;base64,abc"}},
+        {"type": "text", "text": "Image file: test.png"},
+    ]
+    res = ToolResult(success=True, output="Image file: test.png", data=img_data)
+
+    sess = SessionManager()
+    tool_msg_content = (
+        res.data
+        if isinstance(res.data, list) and any(isinstance(b, dict) and b.get("type") == "image_url" for b in res.data)
+        else res.output
+    )
+    sess.add_tool_result("call_123", "read", tool_msg_content)
+    api_msgs = sess.get_api_messages()
+    assert api_msgs[-1].content == img_data
+    assert api_msgs[-1].to_api_dict()["content"][0]["type"] == "image_url"
+
