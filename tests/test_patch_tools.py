@@ -151,3 +151,29 @@ def test_patch_preserves_lf_line_endings():
     # Should not introduce CRLF
     assert "\r\n" not in result
     assert "new_line\n" in result
+
+
+@pytest.mark.asyncio
+async def test_apply_patch_preserves_crlf_and_bytes_on_disk(tmp_path):
+    import textwrap
+    from vallen_cli.tools.patch_tools import ApplyPatchTool
+    from vallen_cli.core.workspace import get_workspace
+
+    get_workspace().new_project(str(tmp_path))
+    target = tmp_path / "crlf_file.txt"
+    raw = b"line1\r\nline2\r\n\xff\xfe\r\n"
+    target.write_bytes(raw)
+
+    patch_str = f"""*** Begin Patch
+*** Update File: {target}
+@@ line1
+-line2
++line_modified
+*** End Patch"""
+
+    tool = ApplyPatchTool()
+    res = await tool.execute(patch=patch_str)
+    assert res.success, res.error
+    assert target.read_bytes() == b"line1\r\nline_modified\r\n\xff\xfe\r\n"
+
+

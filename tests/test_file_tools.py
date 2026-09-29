@@ -249,3 +249,20 @@ async def test_edit_requires_read_first(tmp_path: Path):
     )
     assert not result.success
     assert "must Read" in result.error or "read tool first" in result.error.lower()
+
+
+def test_write_text_preserve_surrogates_and_crlf(tmp_path: Path):
+    from vallen_cli.tools.file_tools import read_text_preserve, write_text_preserve
+
+    target = tmp_path / "binary_crlf.bin"
+    raw = b"header\r\n\xff\xfe\r\nfooter\r\n"
+    target.write_bytes(raw)
+
+    text, newline = read_text_preserve(target)
+    assert newline == "\r\n"
+    # Modifying one line should preserve the non-UTF-8 bytes and CRLF
+    edited_text = text.replace("header", "new_header")
+    write_text_preserve(target, edited_text, newline)
+
+    assert target.read_bytes() == b"new_header\r\n\xff\xfe\r\nfooter\r\n"
+

@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from .base import BaseTool, ToolResult
+from .file_tools import read_text_preserve, write_text_preserve
 from ..core.workspace import get_workspace
 from ..core.file_tracker import get_file_tracker
 
@@ -397,21 +398,21 @@ class ApplyPatchTool(BaseTool):
             try:
                 p = _resolve(hunk.path)
                 if hunk.kind == "add":
-                    before = p.read_text(errors="replace") if p.exists() else None
+                    before, file_newline = read_text_preserve(p) if p.exists() else (None, "\n")
                     await asyncio.to_thread(p.parent.mkdir, parents=True, exist_ok=True)
-                    await asyncio.to_thread(p.write_text, hunk.content)
+                    await asyncio.to_thread(write_text_preserve, p, hunk.content, file_newline)
                     results.append(f"A {p.name}")
                     try:
                         from ..core.format import format_file
                         await format_file(p)
                     except Exception:
                         pass
-                    after = await asyncio.to_thread(p.read_text, errors="replace")
+                    after, _ = read_text_preserve(p)
                     tracker.record_write(str(p), before, after)
 
                 elif hunk.kind == "delete":
                     if p.exists():
-                        before = await asyncio.to_thread(p.read_text, errors="replace") if p.exists() else None
+                        before, _ = read_text_preserve(p) if p.exists() else (None, "\n")
                         tracker.record_delete(str(p), before)
                         await asyncio.to_thread(p.unlink)
                         results.append(f"D {p.name}")
@@ -422,7 +423,7 @@ class ApplyPatchTool(BaseTool):
                     if not p.exists():
                         errors.append(f"update: file not found: {hunk.path}")
                         continue
-                    before = await asyncio.to_thread(p.read_text, errors="replace")
+                    before, file_newline = read_text_preserve(p)
                     content = before
                     failed_chunks = 0
                     for chunk in hunk.chunks:
@@ -439,19 +440,19 @@ class ApplyPatchTool(BaseTool):
                         )
                         if content != before:
                             # partial apply — still write what succeeded
-                            await asyncio.to_thread(p.write_text, content)
+                            await asyncio.to_thread(write_text_preserve, p, content, file_newline)
                             tracker.record_write(str(p), before, content)
                             results.append(f"M {p.name} (partial: {len(hunk.chunks) - failed_chunks}/{len(hunk.chunks)} chunks)")
                     else:
-                        await asyncio.to_thread(p.write_text, content)
+                        await asyncio.to_thread(write_text_preserve, p, content, file_newline)
                         tracker.record_write(str(p), before, content)
 
                         # Handle rename/move
                         if hunk.move_to:
                             dest = _resolve(hunk.move_to)
-                            dest_before = await asyncio.to_thread(dest.read_text, errors="replace") if dest.exists() else None
+                            dest_before, dest_newline = read_text_preserve(dest) if dest.exists() else (None, file_newline)
                             await asyncio.to_thread(dest.parent.mkdir, parents=True, exist_ok=True)
-                            await asyncio.to_thread(dest.write_text, content)
+                            await asyncio.to_thread(write_text_preserve, dest, content, dest_newline)
                             await asyncio.to_thread(p.unlink)
                             tracker.record_delete(str(p), before)
                             tracker.record_write(str(dest), dest_before, content)

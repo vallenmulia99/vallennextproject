@@ -103,9 +103,11 @@ def write_text_preserve(path: Path, text: str, newline: str) -> None:
     """
     # Normalize text to the target newline style
     if newline == "\r\n":
-        # Convert any LF to CRLF (but not existing CRLF)
         text = text.replace("\r\n", "\n").replace("\n", "\r\n")
-    path.write_text(text, encoding="utf-8")
+    else:
+        text = text.replace("\r\n", "\n")
+    path.write_bytes(text.encode("utf-8", errors="surrogateescape"))
+
 
 
 # ---------------------------------------------------------------------------
