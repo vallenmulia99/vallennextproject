@@ -492,7 +492,15 @@ async def run_agent(
                     verification_failures = 0
                 # Prevent massive tool outputs from exploding context and triggering TPM rate limits
                 if len(output) > 25000:
-                    output = output[:25000] + f"\n... [Output truncated ({len(output):,} chars total).]"
+                    instruction = " Gunakan offset/limit untuk membaca bagian berikutnya." if tool_name in ("read", "read_file") else ""
+                    note_match = re.search(r"(<response clipped>.*?</NOTE>)$", output, re.DOTALL)
+                    if note_match:
+                        preserved_note = note_match.group(1)
+                        budget = max(0, 25000 - len(preserved_note) - 60)
+                        output = output[:budget] + f"\n... [Output truncated ({len(output):,} chars total).{instruction}]\n\n" + preserved_note
+                    else:
+                        output = output[:25000] + f"\n... [Output truncated ({len(output):,} chars total).{instruction}]"
+
 
                 # ── Doom loop detection ──────────────────────────────────────
                 doom_triggered = False
