@@ -52,7 +52,6 @@ class PermissionManager:
         "edit", "edit_file",
         "shell", "run_shell", "bash",
         "apply_patch",
-        "git_diff",
     }
 
     FILE_EDIT_TOOLS = {
@@ -73,6 +72,7 @@ class PermissionManager:
         "list_mcp_resources", "read_mcp_resource",
         "lsp", "code_intelligence",
         "git_status", "git_log",
+        "git_diff",
     }
 
     def __init__(self) -> None:
@@ -113,6 +113,14 @@ class PermissionManager:
         target_norm = target.strip()
         qualified = f"{tool_name}:{target_norm}" if target_norm else tool_name
 
+        is_shell = tool_name in ("shell", "run_shell", "bash")
+        has_chain = is_shell and any(op in target_norm for op in (";", "&&", "||", "|", "`", "$(", "\n", "\r"))
+
+        def sanitize_action(act: PermAction) -> PermAction:
+            if has_chain and act == PermAction.ALLOW:
+                return PermAction.ASK
+            return act
+
         # Pass 1: exact and wildcard matches (except "*")
         for pattern, action in perms.items():
             if pattern == "*":
@@ -123,22 +131,24 @@ class PermissionManager:
                 if ":" in pattern:
                     p_tool, _, p_arg = pattern.partition(":")
                     if fnmatch.fnmatch(tool_name, p_tool) and fnmatch.fnmatch(target_norm, p_arg):
-                        return action_enum
+                        return sanitize_action(action_enum)
                 # Test tool name pattern match
                 elif fnmatch.fnmatch(tool_name, pattern):
-                    return action_enum
+                    return sanitize_action(action_enum)
             elif isinstance(action, dict):
                 # Nested section, e.g. [permissions.edit]
                 if fnmatch.fnmatch(tool_name, pattern):
                     for sub_pat, sub_act in action.items():
                         if fnmatch.fnmatch(target_norm, sub_pat):
                             act_str = str(sub_act).lower()
-                            return PermAction(act_str) if act_str in ("allow", "ask", "deny") else PermAction.ASK
+                            raw_enum = PermAction(act_str) if act_str in ("allow", "ask", "deny") else PermAction.ASK
+                            return sanitize_action(raw_enum)
 
         # Pass 2: wildcard fallback "*"
         if "*" in perms:
             fallback = str(perms["*"]).lower()
-            return PermAction(fallback) if fallback in ("allow", "ask", "deny") else PermAction.ASK
+            raw_fallback = PermAction(fallback) if fallback in ("allow", "ask", "deny") else PermAction.ASK
+            return sanitize_action(raw_fallback)
 
         return PermAction.UNKNOWN
 

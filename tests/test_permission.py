@@ -91,3 +91,32 @@ async def test_permission_apply_patch_wildcard_deny(monkeypatch):
     req = PermRequest(tool_name="apply_patch", description="Apply patch to .env", path=".env")
     reply = await pm.check(req)
     assert reply == PermReply.REJECT
+
+
+@pytest.mark.asyncio
+async def test_permission_git_diff_is_safe_tool():
+    pm = PermissionManager()
+    req = PermRequest(tool_name="git_diff", description="Check diff", path="")
+    reply = await pm.check(req)
+    assert reply == PermReply.ONCE
+
+
+@pytest.mark.asyncio
+async def test_permission_shell_wildcard_blocks_chained_commands(monkeypatch):
+    from vallen_cli.core.config import get_config
+    cfg = get_config()
+    monkeypatch.setattr(cfg, "get", lambda key, default=None: {"shell:git *": "allow"} if key == "permissions" else default)
+
+    pm = PermissionManager()
+    # Chained commands with semicolon, &&, ||, |, etc. must fall back to ASK, not auto-allow
+    for chained_cmd in [
+        "git status; rm -rf /tmp/test",
+        "git status && cat /etc/passwd",
+        "git log | grep password",
+        "git status\nrm -rf /",
+    ]:
+        req = PermRequest(tool_name="shell", description=f"Run: {chained_cmd}", path=chained_cmd)
+        reply = await pm.check(req)
+        # Without callback, ASK fails closed to REJECT
+        assert reply == PermReply.REJECT, f"Chained command '{chained_cmd}' was unexpectedly allowed"
+
