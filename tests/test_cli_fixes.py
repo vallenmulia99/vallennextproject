@@ -218,6 +218,66 @@ async def test_slash_profile_command():
     assert "Unknown profile" in res_unknown.output
 
 
+def test_paste_offload_scratch_file(tmp_path):
+    from vallen_cli.core.scratch import should_offload_paste, save_scratch_file
+
+    short_code = "print('hello')"
+    assert should_offload_paste(short_code) is False
+
+    long_code = ("x = 1\n" * 50)  # 50 lines > 35 lines threshold
+    assert should_offload_paste(long_code) is True
+
+    saved = save_scratch_file(long_code, workspace_path=str(tmp_path))
+    assert saved.exists()
+    assert ".vallen/scratch" in str(saved)
+    assert saved.read_text() == long_code
+
+
+@pytest.mark.asyncio
+async def test_vision_analyze_tool(tmp_path):
+    from vallen_cli.tools.vision_tool import VisionAnalyzeTool
+    from vallen_cli.core.workspace import get_workspace
+
+    get_workspace().new_project(str(tmp_path))
+    img_file = tmp_path / "diagram.png"
+    # 1x1 dummy PNG bytes
+    dummy_png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+    img_file.write_bytes(dummy_png)
+
+    tool = VisionAnalyzeTool()
+    res = await tool.execute(image_path="diagram.png", question="What is in this diagram?")
+    assert res.success
+    assert "diagram.png" in res.output
+    assert isinstance(res.data, list)
+    assert res.data[0]["type"] == "image_url"
+    assert res.data[0]["image_url"]["url"].startswith("data:image/png;base64,")
+
+
+def test_html_to_clean_markdown():
+    from vallen_cli.tools.webextract_tool import html_to_clean_markdown
+
+    sample_html = """
+    <html>
+      <head><script>alert(1);</script><style>body { color: red; }</style></head>
+      <body>
+        <nav><a href="/home">Home</a></nav>
+        <h1>Article Title</h1>
+        <p>This is a paragraph with a <a href="https://example.com">link</a>.</p>
+        <pre><code>def test(): return 42</code></pre>
+        <footer>Copyright 2026</footer>
+      </body>
+    </html>
+    """
+    clean = html_to_clean_markdown(sample_html)
+    assert "alert(1)" not in clean
+    assert "body { color: red; }" not in clean
+    assert "Copyright 2026" not in clean
+    assert "# Article Title" in clean
+    assert "[link](https://example.com)" in clean
+    assert "```" in clean and "def test(): return 42" in clean
+
+
+
 
 
 

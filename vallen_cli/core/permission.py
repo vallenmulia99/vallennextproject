@@ -74,6 +74,7 @@ class PermissionManager:
         "git_status", "git_log",
         "git_diff",
         "tool_search", "tool_describe", "tool_call",
+        "vision_analyze", "web_extract",
     }
 
     def __init__(self) -> None:

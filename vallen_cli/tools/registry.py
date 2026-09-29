@@ -22,6 +22,8 @@ from .lsp_tool import LspTool
 from .memory_tool import RememberTool
 from .verify_tool import VerifyTool
 from .deferred_tools import ToolSearchTool, ToolDescribeTool, ToolCallTool
+from .vision_tool import VisionAnalyzeTool
+from .webextract_tool import WebExtractTool
 
 _registry: ToolRegistry | None = None
 
@@ -66,6 +68,9 @@ def get_tool_registry() -> ToolRegistry:
             ToolSearchTool,
             ToolDescribeTool,
             ToolCallTool,
+            # Multimodal Vision & Enhanced Web Extract
+            VisionAnalyzeTool,
+            WebExtractTool,
             # MCP Resources
             ListMcpResourcesTool,
             ReadMcpResourceTool,

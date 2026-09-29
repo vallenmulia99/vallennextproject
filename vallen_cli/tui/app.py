@@ -581,7 +581,14 @@ class ChatTextArea(TextArea):
         """Paste directly from system clipboard or local clipboard."""
         clip = get_system_clipboard() or self.app.clipboard
         if clip:
-            self.insert(clip)
+            from ..core.scratch import should_offload_paste, save_scratch_file
+            if should_offload_paste(clip):
+                scratch_file = save_scratch_file(clip)
+                lines = len(clip.splitlines())
+                notice = f"[Pasted content ({lines} lines, {len(clip):,} chars) saved to {scratch_file}. Use read tool to inspect.]\n"
+                self.insert(notice)
+            else:
+                self.insert(clip)
 
     def action_copy(self) -> None:
         """Copy selected text or entire input to system clipboard."""
