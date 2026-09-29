@@ -73,6 +73,7 @@ class PermissionManager:
         "lsp", "code_intelligence",
         "git_status", "git_log",
         "git_diff",
+        "tool_search", "tool_describe", "tool_call",
     }
 
     def __init__(self) -> None:

@@ -140,3 +140,37 @@ async def test_check_file_syntax_python_ast_no_pycache(tmp_path):
     assert "SyntaxError" in err_bad
 
 
+@pytest.mark.asyncio
+async def test_deferred_tools_flow():
+    from vallen_cli.tools.registry import reset_tool_registry, get_tool_registry, tool_names_for_profile
+    reset_tool_registry()
+    reg = get_tool_registry()
+
+    # 1. Narrow profile contains narrow core + deferred discovery tools
+    narrow_tools = tool_names_for_profile("narrow")
+    assert narrow_tools is not None
+    assert "tool_search" in narrow_tools
+    assert "tool_describe" in narrow_tools
+    assert "tool_call" in narrow_tools
+    assert "read" in narrow_tools
+
+    # 2. tool_search finds websearch by keyword
+    search_tool = reg.get("tool_search")
+    res_search = await search_tool.execute(queries=["web search"])
+    assert res_search.success
+    assert "websearch" in res_search.output
+
+    # 3. tool_describe gives full schema
+    desc_tool = reg.get("tool_describe")
+    res_desc = await desc_tool.execute(names=["websearch"])
+    assert res_desc.success
+    assert "query" in res_desc.output
+
+    # 4. tool_call executes the deferred tool
+    call_tool = reg.get("tool_call")
+    # Invoke question tool as deferred tool
+    res_call = await call_tool.execute(name="question", arguments={"question": "Hi"})
+    assert res_call.success
+
+
+

@@ -35,6 +35,9 @@ from ..providers.registry import get_registry
 from ..providers.base import Message, StreamChunk
 from ..tools.registry import get_tool_registry, tool_names_for_profile
 from ..tools.base import format_tool_output
+from .loop.turn_tools import check_doom_loop, format_tool_content_for_session, truncate_large_output
+from .loop.turn_recovery import handle_length_truncation
+from .error_classifier import classify_error
 
 
 @dataclass
@@ -492,38 +495,14 @@ async def run_agent(
                         output += f"\n\nVerification retry limit reached ({MAX_VERIFICATION_RETRIES}). Consider fixing these diagnostics before making further edits."
                 elif result.success and tool_name in ("write", "write_file", "edit", "edit_file", "apply_patch"):
                     verification_failures = 0
-                # Prevent massive tool outputs from exploding context and triggering TPM rate limits
-                if len(output) > 25000:
-                    instruction = " Gunakan offset/limit untuk membaca bagian berikutnya." if tool_name in ("read", "read_file") else ""
-                    note_match = re.search(r"(<response clipped>.*?</NOTE>)$", output, re.DOTALL)
-                    if note_match:
-                        preserved_note = note_match.group(1)
-                        budget = max(0, 25000 - len(preserved_note) - 60)
-                        output = output[:budget] + f"\n... [Output truncated ({len(output):,} chars total).{instruction}]\n\n" + preserved_note
-                    else:
-                        output = output[:25000] + f"\n... [Output truncated ({len(output):,} chars total).{instruction}]"
-
+                output = truncate_large_output(output, tool_name)
 
                 # ── Doom loop detection ──────────────────────────────────────
-                doom_triggered = False
-                if not result.success:
-                    call_sig = f"{tool_name}:{raw_args.strip()}"
-                    if call_sig == last_failure_sig:
-                        failure_streak += 1
-                    else:
-                        last_failure_sig = call_sig
-                        failure_streak = 1
-
-                    if failure_streak >= DOOM_LOOP_THRESHOLD:
-                        doom_triggered = True
-                        doom_msg = (
-                            f"\n[Doom loop detected]: '{tool_name}' failed {failure_streak} times with the same error. "
-                            "Stopping agent turn to prevent wasted iterations."
-                        )
-                        output += doom_msg
-                else:
-                    last_failure_sig = None
-                    failure_streak = 0
+                doom_triggered, last_failure_sig, failure_streak, doom_msg = check_doom_loop(
+                    tool_name, raw_args, result.success, last_failure_sig, failure_streak, threshold=DOOM_LOOP_THRESHOLD
+                )
+                if doom_msg:
+                    output += doom_msg
 
                 if on_event:
                     on_event(AgentEvent("tool_result", {
@@ -534,11 +513,7 @@ async def run_agent(
                     }))
 
                 # Pass multimodal blocks if present (e.g. image read), else output string
-                tool_msg_content = (
-                    result.data
-                    if isinstance(result.data, list) and any(isinstance(b, dict) and b.get("type") == "image_url" for b in result.data)
-                    else output
-                )
+                tool_msg_content = format_tool_content_for_session(result, output)
                 session.add_tool_result(tool_call_id, tool_name, tool_msg_content)
 
                 if doom_triggered:

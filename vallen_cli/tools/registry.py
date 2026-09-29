@@ -21,6 +21,7 @@ from .mcp_tools import ListMcpResourcesTool, ReadMcpResourceTool
 from .lsp_tool import LspTool
 from .memory_tool import RememberTool
 from .verify_tool import VerifyTool
+from .deferred_tools import ToolSearchTool, ToolDescribeTool, ToolCallTool
 
 _registry: ToolRegistry | None = None
 
@@ -29,6 +30,8 @@ TOOL_PROFILES: dict[str, set[str]] = {
     "review": {"read", "glob", "grep", "git_status", "git_diff", "git_log"},
     "edit": {"read", "edit", "write", "apply_patch", "glob", "grep"},
     "test": {"read", "glob", "grep", "shell", "verify", "git_status", "git_diff"},
+    "core": {"read", "write", "edit", "apply_patch", "shell", "grep", "glob", "tool_search", "tool_describe", "tool_call"},
+    "narrow": {"read", "write", "edit", "apply_patch", "shell", "grep", "glob", "tool_search", "tool_describe", "tool_call"},
     "full": set(),
 }
 
@@ -59,6 +62,10 @@ def get_tool_registry() -> ToolRegistry:
             ListSkillsTool,
             # Memory & Context Cache
             RememberTool,
+            # Deferred / On-demand Tools (Hermes narrow waist)
+            ToolSearchTool,
+            ToolDescribeTool,
+            ToolCallTool,
             # MCP Resources
             ListMcpResourcesTool,
             ReadMcpResourceTool,

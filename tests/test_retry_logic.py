@@ -46,3 +46,29 @@ async def test_tool_execution_does_not_retry_on_internal_type_error():
     # Tool must NOT be called twice!
     assert calls == 1
 
+
+def test_classify_error_behavior():
+    from vallen_cli.core.error_classifier import classify_error
+
+    # 401 Unauthorized -> non-retryable
+    c401 = classify_error("HTTP 401: Unauthorized access token")
+    assert c401.is_retryable is False
+    assert c401.kind == "auth_error"
+
+    # 429 Rate limit -> retryable with suggested delay
+    c429 = classify_error("Rate limit exceeded 429: retry-after: 5")
+    assert c429.is_retryable is True
+    assert c429.kind == "rate_limit"
+    assert c429.suggested_delay == 5.0
+
+    # 503 Service Unavailable -> retryable
+    c503 = classify_error("503 Service Unavailable")
+    assert c503.is_retryable is True
+    assert c503.kind == "server_error"
+
+    # Timeout -> retryable
+    ctimeout = classify_error("Connection timed out after 30s")
+    assert ctimeout.is_retryable is True
+    assert ctimeout.kind == "timeout"
+
+
