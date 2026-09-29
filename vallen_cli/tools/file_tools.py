@@ -383,19 +383,24 @@ def smart_replace(
         new_content = content.replace(old_str, new_str) if replace_all else content.replace(old_str, new_str, 1)
         return True, new_content, matches, None
 
-    # 2. Strip line number prefixes if present
-    cleaned_old = "\n".join(re.sub(r"^\s*\d+:\s?", "", line) for line in old_str.splitlines())
-    if cleaned_old != old_str and cleaned_old in content:
-        matches = content.count(cleaned_old)
-        if matches > 1 and not replace_all:
-            return (
-                False,
-                content,
-                matches,
-                f"Found {matches} matches for oldString in {file_name} after removing line numbers. Provide more surrounding context, or set replaceAll=True.",
-            )
-        new_content = content.replace(cleaned_old, new_str) if replace_all else content.replace(cleaned_old, new_str, 1)
-        return True, new_content, matches, None
+    # 2. Strip line number prefixes if present ONLY IF all non-empty lines have line numbers
+    old_lines = old_str.splitlines()
+    non_empty = [l for l in old_lines if l.strip()]
+    if non_empty and all(re.match(r"^\s*\d+:\s?", l) for l in non_empty):
+        cleaned_old = "\n".join(re.sub(r"^\s*\d+:\s?", "", line) for line in old_lines)
+        if cleaned_old != old_str and cleaned_old in content:
+            matches = content.count(cleaned_old)
+            if matches > 1 and not replace_all:
+                return (
+                    False,
+                    content,
+                    matches,
+                    f"Found {matches} matches for oldString in {file_name} after removing line numbers. Provide more surrounding context, or set replaceAll=True.",
+                )
+            new_content = content.replace(cleaned_old, new_str) if replace_all else content.replace(cleaned_old, new_str, 1)
+            return True, new_content, matches, None
+    else:
+        cleaned_old = old_str
 
     # 3. Line ending normalization
     norm_content = content.replace("\r\n", "\n")
@@ -429,9 +434,31 @@ def smart_replace(
             if lines_stripped[i : i + n] == target_lines:
                 match_indices.append(i)
 
+        first_ref = next((l for l in norm_cleaned.splitlines(keepends=True) if l.strip()), "")
+
+        def _adjust_indentation(rep_str: str, match_line: str, ref_line: str) -> str:
+            m_indent = match_line[: len(match_line) - len(match_line.lstrip())]
+            r_indent = ref_line[: len(ref_line) - len(ref_line.lstrip())] if ref_line else ""
+            rep_lines = rep_str.splitlines(keepends=True)
+            out: list[str] = []
+            for l in rep_lines:
+                if not l.strip():
+                    out.append(l)
+                    continue
+                if r_indent and l.startswith(r_indent):
+                    out.append(m_indent + l[len(r_indent):])
+                else:
+                    # Count leading whitespace of l to preserve relative child indentation
+                    l_ws = l[: len(l) - len(l.lstrip())]
+                    out.append(m_indent + l_ws + l.lstrip() if l_ws.startswith(m_indent) else m_indent + l.lstrip())
+            res_str = "".join(out)
+            return res_str
+
         if len(match_indices) == 1:
             idx = match_indices[0]
-            replacement = new_str if new_str.endswith("\n") else new_str + "\n"
+            replacement = _adjust_indentation(new_str, lines[idx], first_ref)
+            if not replacement.endswith("\n") and lines[idx + n - 1].endswith("\n"):
+                replacement += "\n"
             new_lines = lines[:idx] + [replacement] + lines[idx + n :]
             res = "".join(new_lines)
             if "\r\n" in content:
@@ -440,7 +467,9 @@ def smart_replace(
         elif len(match_indices) > 1 and replace_all:
             curr_lines = list(lines)
             for idx in reversed(match_indices):
-                replacement = new_str if new_str.endswith("\n") else new_str + "\n"
+                replacement = _adjust_indentation(new_str, lines[idx], first_ref)
+                if not replacement.endswith("\n") and lines[idx + n - 1].endswith("\n"):
+                    replacement += "\n"
                 curr_lines = curr_lines[:idx] + [replacement] + curr_lines[idx + n :]
             res = "".join(curr_lines)
             if "\r\n" in content:

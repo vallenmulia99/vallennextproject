@@ -266,3 +266,26 @@ def test_write_text_preserve_surrogates_and_crlf(tmp_path: Path):
 
     assert target.read_bytes() == b"new_header\r\n\xff\xfe\r\nfooter\r\n"
 
+
+def test_smart_replace_does_not_strip_numeric_dict_keys():
+    from vallen_cli.tools.file_tools import smart_replace
+    content = "mapping = {\n    1: 'first',\n    2: 'second',\n}\n"
+    # User provides multi-line block without line numbers on outer lines
+    old_str = "mapping = {\n  1: 'first',\n  2: 'second',\n}"
+    new_str = "mapping = {\n  1: 'updated',\n  2: 'second',\n}"
+    ok, res, matches, err = smart_replace(content, old_str, new_str)
+    assert ok, err
+    assert "1: 'updated'" in res
+
+
+def test_smart_replace_step4_preserves_block_indentation():
+    from vallen_cli.tools.file_tools import smart_replace
+    content = "def test():\n    if cond:\n        action()\n"
+    # Unindented old_str and new_str
+    old_str = "if cond:\n    action()"
+    new_str = "if cond:\n    new_action()"
+    ok, res, matches, err = smart_replace(content, old_str, new_str)
+    assert ok, err
+    assert res == "def test():\n    if cond:\n        new_action()\n"
+
+
