@@ -42,6 +42,7 @@ from ..core.agent import run_agent, AgentEvent
 from .widgets.message import ChatMessage, StreamingMessage, ToolCallCard
 from .widgets.model_picker import ModelPickerScreen
 from .widgets.hub_modal import HubModalScreen
+from .widgets.token_modal import TokenModal
 from .widgets.permission_modal import PermissionModal
 from .widgets.question_modal import QuestionModal
 from ..core.permission import get_permission_manager, PermRequest, PermReply
@@ -889,6 +890,7 @@ class MainScreen(Screen):
         Binding("ctrl+s", "history", "History", show=False),
         Binding("ctrl+h", "cancel_generation", "Halt / Cancel", show=False),
         Binding("ctrl+d", "quit", "Quit", show=False),
+        Binding("ctrl+t", "token_modal", "9Router Token", show=False),
     ]
 
     _generating: bool = False
@@ -1052,6 +1054,9 @@ class MainScreen(Screen):
                     return
                 if action == "open_model_picker":
                     self.action_model_picker()
+                    return
+                if action == "open_token_modal":
+                    self.action_token_modal()
                     return
                 if action == "compact":
                     self._do_compact()
@@ -1244,6 +1249,15 @@ class MainScreen(Screen):
 
     def action_open_hub(self) -> None:
         self.app.push_screen(HubModalScreen())
+
+    async def action_token_modal(self) -> None:
+        def on_dismiss(result: dict | None) -> None:
+            if result and result.get("saved"):
+                get_registry().reload()
+                self._refresh_ui()
+                self.check_provider_status()
+                self._post_system("OK: 9Router token saved. Provider now active.")
+        await self.app.push_screen(TokenModal(), on_dismiss)
 
     def action_refresh_cli(self) -> None:
         """Reload runtime state and repaint CLI without clearing the session."""

@@ -199,6 +199,7 @@ class HubModalScreen(ModalScreen):
             ("/export", "Export the conversation to a Markdown file"),
             ("/agents", "View / edit AGENTS.md instructions"),
             ("/tokens", "Check current token usage"),
+            ("/token", "Set 9Router API token & endpoint (or Ctrl+T)"),
         ]
         for cmd, desc in sys_cmds:
             t.append(f"  {cmd:<22}", style="bold #a855f7")

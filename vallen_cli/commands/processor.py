@@ -410,6 +410,14 @@ async def _handle_slash(text: str) -> CommandResult:
             data={"action": "open_model_picker"},
         )
 
+    if cmd in ("/token", "/9router", "/apikey"):
+        return CommandResult(
+            handled=True,
+            output="Opening 9Router token setup…",
+            kind="info",
+            data={"action": "open_token_modal"},
+        )
+
     if cmd == "/projects":
         return _cmd_list_projects()
 

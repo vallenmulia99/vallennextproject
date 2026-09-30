@@ -77,8 +77,8 @@ if [ -z "$CURRENT_BRANCH" ]; then
     exit 1
 fi
 if ! git remote get-url origin >/dev/null 2>&1; then
-    echo -e "${RED}❌ Error: remote origin tidak ditemukan.${RESET}"
-    exit 1
+    echo -e "${YELLOW}ℹ️  Remote origin tidak ditemukan. Menambahkan remote origin: ${REPO_URL}${RESET}"
+    git remote add origin "$REPO_URL"
 fi
 ASKPASS_FILE="$(mktemp)"
 cat > "$ASKPASS_FILE" <<'ASKPASS'

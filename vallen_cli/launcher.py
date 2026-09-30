@@ -160,6 +160,56 @@ def print_banner() -> None:
     print(f"{DIM} ─────────────────────────────────────────────────────────────────────────────{RESET}\n")
 
 
+def configure_9router_token() -> None:
+    """Interactive terminal wizard to set 9Router API key, base URL, and model."""
+    BOLD = "\033[1m"
+    CYAN = "\033[1;36m"
+    GREEN = "\033[1;32m"
+    YELLOW = "\033[1;33m"
+    DIM = "\033[2m"
+    RESET = "\033[0m"
+
+    print(f"\n{BOLD}{CYAN}🔑 KONFIGURASI 9ROUTER{RESET}")
+    print(f"{DIM}Kosongkan field → pakai nilai saat ini{RESET}\n")
+
+    try:
+        from vallen_cli.core.config import get_config
+        cfg = get_config()
+    except Exception as e:
+        print(f"✗ Gagal load config: {e}")
+        return
+
+    cur_key = cfg.get("providers", "9router", "api_key", default="")
+    cur_url = cfg.get("providers", "9router", "base_url", default="http://localhost:20128/v1")
+    cur_model = cfg.get("providers", "9router", "model", default="ag/gemini-3.8-flash-medium")
+
+    masked_key = ("*" * (len(cur_key) - 4) + cur_key[-4:]) if len(cur_key) > 4 else ("*" * len(cur_key) if cur_key else "(kosong)")
+
+    try:
+        key = input(f"  {BOLD}API Token{RESET} [{YELLOW}{masked_key}{RESET}]: ").strip()
+        url = input(f"  {BOLD}Base URL {RESET} [{CYAN}{cur_url}{RESET}]: ").strip()
+        model = input(f"  {BOLD}Model    {RESET} [{CYAN}{cur_model}{RESET}]: ").strip()
+    except (KeyboardInterrupt, EOFError):
+        print("\nBatal.")
+        return
+
+    if key:
+        cfg.set("providers", "9router", "api_key", key)
+    if url:
+        cfg.set("providers", "9router", "base_url", url)
+    if model:
+        cfg.set("providers", "9router", "model", model)
+
+    cfg.set("providers", "9router", "enabled", True)
+    cfg.active_provider = "9router"
+    cfg.save()
+
+    print(f"\n{GREEN}✓ Tersimpan! 9Router sekarang aktif sebagai provider.{RESET}")
+    print(f"  Provider : {CYAN}9router{RESET}")
+    print(f"  Base URL : {CYAN}{cfg.get('providers', '9router', 'base_url')}{RESET}")
+    print(f"  Model    : {CYAN}{cfg.get('providers', '9router', 'model')}{RESET}\n")
+
+
 def interactive_menu() -> None:
     print_banner()
 
@@ -175,10 +225,11 @@ def interactive_menu() -> None:
     print(f"    [4] {BOLD}⚙️  Status & Cek{RESET} — Cek status server IDE & koneksi AI")
     print(f"  {CYAN}  [3]{RESET} {BOLD}✨ VALLEN CIHUY{RESET} — AI PRD & System Blueprint Studio (Web)")
     print(f"    [5] {BOLD}🛑 Stop IDE Server{RESET} — Hentikan background server IDE")
+    print(f"    [7] {BOLD}🔑 9Router Token{RESET}   — Set API token & endpoint 9Router")
     print(f"    [6] {BOLD}✕  Keluar{RESET}\n")
 
     try:
-        choice = input(f"{BOLD}Ketik nomor pilihan (1/2/3/4/5/6) [Default 1]: {RESET}").strip()
+        choice = input(f"{BOLD}Ketik nomor pilihan (1/2/3/4/5/6/7) [Default 1]: {RESET}").strip()
     except (KeyboardInterrupt, EOFError):
         print("\nSampai jumpa!")
         sys.exit(0)
@@ -193,6 +244,8 @@ def interactive_menu() -> None:
         check_status()
     elif choice == "5" or choice.lower() == "stop":
         stop_ide()
+    elif choice == "7" or choice.lower() in ("token", "9router", "apikey"):
+        configure_9router_token()
     elif choice == "6" or choice.lower() in ("q", "exit", "keluar"):
         print("Sampai jumpa!")
         sys.exit(0)
