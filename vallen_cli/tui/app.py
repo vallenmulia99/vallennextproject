@@ -721,7 +721,7 @@ class ChatInputArea(Widget):
         suffix = "_" if self._label_frame % 2 == 0 else " "
         try:
             self.query_one("#input-terminal-label", Static).update(
-                f"  {self.TERMINAL_LABEL[:visible]}{suffix}"
+                f"  {self.TERMINAL_LABEL[:visible]}{suffix}", layout=False
             )
         except NoMatches:
             pass
@@ -729,7 +729,7 @@ class ChatInputArea(Widget):
     def _animate_water(self) -> None:
         self._water_frame = (self._water_frame + 1) % len(self.WATER_FRAMES)
         try:
-            self.query_one("#input-water", Static).update(self.WATER_FRAMES[self._water_frame])
+            self.query_one("#input-water", Static).update(self.WATER_FRAMES[self._water_frame], layout=False)
         except NoMatches:
             pass
 
@@ -1146,9 +1146,10 @@ class MainScreen(Screen):
             cancel = self._cancel_event
             active_tool_cards: dict[int, ToolCallCard] = {}
             agent_task: asyncio.Task | None = None
+            last_stream_scroll = 0.0
 
             def on_event(event: AgentEvent) -> None:
-                nonlocal full_response, active_tool_cards, stream_widget
+                nonlocal full_response, active_tool_cards, stream_widget, last_stream_scroll
                 if cancel.is_set():
                     return
                 if event.kind == "stream_reset":
@@ -1168,13 +1169,19 @@ class MainScreen(Screen):
                         stream_widget = StreamingMessage()
                         self._mount_chat_widget(panel, stream_widget)
                     stream_widget.append(event.data)
-                    panel.scroll_end(animate=False)
+                    now = time.time()
+                    if now - last_stream_scroll >= 0.05:
+                        panel.scroll_end(animate=False)
+                        last_stream_scroll = now
                 elif event.kind == "reasoning":
                     if stream_widget is None:
                         stream_widget = StreamingMessage()
                         self._mount_chat_widget(panel, stream_widget)
                     stream_widget.append_reasoning(event.data)
-                    panel.scroll_end(animate=False)
+                    now = time.time()
+                    if now - last_stream_scroll >= 0.05:
+                        panel.scroll_end(animate=False)
+                        last_stream_scroll = now
                 elif event.kind == "token_usage":
                     try:
                         footer.set_tokens(event.data.get("display", ""))

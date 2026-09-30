@@ -90,6 +90,36 @@ async def test_multiple_diff_cards_performance():
         assert len(panel.children) == 15
 
 
+def test_markdown_fast_codeblock_diff():
+    from rich.markdown import Markdown
+    from rich.console import Console
+
+    md_text = "# Code\n```diff\n--- a/f.py\n+++ b/f.py\n-foo\n+bar\n```\n"
+    md = Markdown(md_text, code_theme="monokai")
+    c = Console(width=80)
+    lines = list(c.render_lines(md, c.options))
+    assert len(lines) > 0
+
+
+@pytest.mark.asyncio
+async def test_streaming_message_throttling():
+    from textual.app import App
+    from vallen_cli.tui.widgets.message import StreamingMessage
+
+    class DummyApp(App):
+        def compose(self):
+            yield StreamingMessage()
+
+    app = DummyApp()
+    async with app.run_test():
+        msg = app.query_one(StreamingMessage)
+        for i in range(20):
+            msg.append(f"token_{i} ")
+        assert msg._has_tokens is True
+        msg.finalize("final content")
+        assert msg._is_finalized() is True
+
+
 def test_slash_autocomplete_list():
     from vallen_cli.tui.app import AVAILABLE_SLASH_COMMANDS
     matches = [c for c in AVAILABLE_SLASH_COMMANDS if c.startswith("/auto")]

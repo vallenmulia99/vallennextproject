@@ -6,6 +6,8 @@ import re
 import time
 from typing import ClassVar
 
+from rich.console import Console, ConsoleOptions, RenderResult
+from rich.markdown import Markdown, CodeBlock
 from rich.syntax import Syntax
 from rich.text import Text
 from textual.app import ComposeResult
@@ -149,6 +151,7 @@ class StreamingMessage(Widget):
         self._timer = None
         self._has_tokens = False
         self._has_reasoning = False
+        self._last_stream_update = 0.0
 
         self._static_header: Static | None = None
         self._static_loader: Static | None = None
@@ -189,47 +192,54 @@ class StreamingMessage(Widget):
             msg.append(f"  {phrase} ", style="italic #d8d8f0")
             msg.append(f"[{elapsed:.1f}s]", style="#6b7280")
             if self._static_loader:
-                self._static_loader.update(msg)
+                self._static_loader.update(msg, layout=False)
 
         # 2. Pulsing star cursor while tokens are actively streaming
         elif self._has_tokens and not self._is_finalized():
-            cursor = STAR_CURSORS[self._frame % len(STAR_CURSORS)]
-            if self._static_content:
-                display = self._buffer[-4000:]
-                text_obj = Text(f"  {display}", style=C_STREAM)
-                text_obj.append(cursor, style=f"bold {STAR_COLORS[self._frame % len(STAR_COLORS)]}")
-                self._static_content.update(text_obj)
+            self._flush_stream_content()
 
     def _is_finalized(self) -> bool:
         return self._timer is None
 
-    def append_reasoning(self, token: str) -> None:
-        self._has_reasoning = True
-        self._reasoning += token
-        if self._static_loader:
-            self._static_loader.update("")
+    def _flush_stream_content(self) -> None:
+        if self._static_content and not self._is_finalized():
+            display = self._buffer[-4000:]
+            cursor = STAR_CURSORS[self._frame % len(STAR_CURSORS)]
+            text_obj = Text(f"  {display}", style=C_STREAM)
+            text_obj.append(cursor, style=f"bold {STAR_COLORS[self._frame % len(STAR_COLORS)]}")
+            self._static_content.update(text_obj, layout=False)
 
-        if self._static_reasoning:
+    def _flush_reasoning_content(self) -> None:
+        if self._static_reasoning and not self._is_finalized():
             display = self._reasoning[-800:]
             elapsed = time.time() - self._start_time
             msg = Text("  THINK ", style="none")
             msg.append("Thinking", style="bold italic #b0a0ff")
             msg.append(f" [{elapsed:.1f}s] ", style="#6b7280")
             msg.append(f"... {display}", style="italic #94a3b8")
-            self._static_reasoning.update(msg)
+            self._static_reasoning.update(msg, layout=False)
+
+    def append_reasoning(self, token: str) -> None:
+        self._has_reasoning = True
+        self._reasoning += token
+        if self._static_loader:
+            self._static_loader.update("", layout=False)
+
+        now = time.time()
+        if now - self._last_stream_update >= 0.04:
+            self._last_stream_update = now
+            self._flush_reasoning_content()
 
     def append(self, token: str) -> None:
         self._has_tokens = True
         self._buffer += token
         if self._static_loader:
-            self._static_loader.update("")
+            self._static_loader.update("", layout=False)
 
-        if self._static_content:
-            display = self._buffer[-4000:]
-            cursor = STAR_CURSORS[self._frame % len(STAR_CURSORS)]
-            text_obj = Text(f"  {display}", style=C_STREAM)
-            text_obj.append(cursor, style=f"bold {STAR_COLORS[self._frame % len(STAR_COLORS)]}")
-            self._static_content.update(text_obj)
+        now = time.time()
+        if now - self._last_stream_update >= 0.04:
+            self._last_stream_update = now
+            self._flush_stream_content()
 
     def finalize(self, full_content: str) -> None:
         if self._timer:
@@ -359,6 +369,31 @@ def _render_diff_text(diff_str: str, max_lines: int = 120) -> Text:
         t.append(f"\n    ... ({total - max_lines} baris dipotong)", style="dim #64748b")
 
     return t
+
+
+class FastCodeBlock(CodeBlock):
+    """Fast zero-pygments diff and cached code block renderer for Rich Markdown.
+    Prevents Pygments from re-tokenizing code blocks on every screen render pass.
+    """
+    def __init__(self, lexer_name: str, theme: str) -> None:
+        super().__init__(lexer_name, theme)
+        self._cached_render = None
+
+    def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
+        if self._cached_render is None:
+            code = str(self.text).rstrip()
+            if self.lexer_name.lower() in ("diff", "udiff", "patch") or (code.startswith("--- ") or code.startswith("+++ ") or code.startswith("@@")):
+                self._cached_render = _render_diff_text(code)
+            else:
+                try:
+                    self._cached_render = Syntax(code, self.lexer_name, theme=self.theme, word_wrap=True, padding=1)
+                except Exception:
+                    self._cached_render = Text(f"    {code}", style="#c8d3f5")
+        yield self._cached_render
+
+
+Markdown.elements["fence"] = FastCodeBlock
+Markdown.elements["code_block"] = FastCodeBlock
 
 
 class ToolCallCard(Widget):
