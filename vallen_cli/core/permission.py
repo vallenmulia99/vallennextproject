@@ -73,7 +73,7 @@ class PermissionManager:
         "lsp", "code_intelligence",
         "git_status", "git_log",
         "git_diff",
-        "tool_search", "tool_describe", "tool_call",
+        "tool_search", "tool_describe",
         "vision_analyze", "web_extract",
         "remember", "memory",
     }

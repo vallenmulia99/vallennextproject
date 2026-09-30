@@ -86,8 +86,11 @@ async def run_agent(
     try:
         from .mcp import get_mcp_manager
         await get_mcp_manager().initialize()
-    except Exception:
-        pass
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning(f"MCP manager initialization failed: {exc}")
+        if on_event:
+            on_event(AgentEvent("info", f"MCP init notice: {exc}"))
 
     # ── Add user message ────────────────────────────────────────────────────
     session.add_user_message(user_input)
@@ -196,11 +199,6 @@ async def run_agent(
         if cancel_event and cancel_event.is_set():
             if on_event:
                 on_event(AgentEvent("info", "Agent cancelled by user"))
-            # Answer any remaining pending tool calls so session stays valid
-            for tc in pending_tool_calls:
-                tc_id = tc.get("id") or f"call_{int(time.time()*1000)}"
-                tc_name = tc.get("function", {}).get("name", "unknown")
-                session.add_tool_result(tc_id, tc_name, "Operation cancelled by user.")
             break
 
         # Keep old tool output out of every subsequent request. This runs before
@@ -220,6 +218,9 @@ async def run_agent(
                 "autopilot": autopilot,
             }))
 
+        # Accumulate input token usage for each conversation round
+        input_tokens_total += token_count
+
         # ── Stream LLM response with bounded provider respawn ────────────────
         delta_buffer = ""
         reasoning_buffer = ""
@@ -228,9 +229,11 @@ async def run_agent(
         provider_error: Exception | None = None
 
         for provider_attempt in range(MAX_PROVIDER_RETRIES + 1):
-            delta_buffer = ""
-            reasoning_buffer = ""
+            attempt_delta = ""
+            attempt_reasoning = ""
+            attempt_pending_tool_calls: list[dict[str, Any]] = []
             stream_finish_reason: str | None = None
+            cancelled = False
             try:
                 async with asyncio.timeout(PROVIDER_STREAM_TIMEOUT_SECONDS):
                     async for chunk in provider.stream_completion(
@@ -240,13 +243,15 @@ async def run_agent(
                         max_tokens=cfg.max_tokens,
                         tools=tools if not is_last_round else None,
                     ):
+                        if chunk.finish_reason:
+                            stream_finish_reason = chunk.finish_reason
+
                         if cancel_event and cancel_event.is_set():
+                            cancelled = True
                             if on_event:
                                 on_event(AgentEvent("info", "Streaming cancelled by user"))
-                            # Add what we have so far and break
-                            if delta_buffer:
-                                session.add_assistant_message(delta_buffer)
                             break
+
                         if chunk.finish_reason == "error":
                             err = RuntimeError(chunk.error or "Provider stream interrupted")
                             # Store retryable flag for outer exception handler
@@ -254,14 +259,12 @@ async def run_agent(
                             raise err
 
                         if chunk.reasoning:
-                            reasoning_buffer += chunk.reasoning
+                            attempt_reasoning += chunk.reasoning
                             if on_event:
                                 on_event(AgentEvent("reasoning", chunk.reasoning))
 
                         if chunk.content:
-                            delta_buffer += chunk.content
-                            full_response += chunk.content
-                            output_tokens_total += max(1, len(chunk.content) // 4)
+                            attempt_delta += chunk.content
                             if on_event:
                                 on_event(AgentEvent("token", chunk.content))
 
@@ -269,12 +272,12 @@ async def run_agent(
                             for tc in chunk.tool_calls:
                                 idx = tc.get("index")
                                 if idx is None:
-                                    idx = len(pending_tool_calls)
-                                while len(pending_tool_calls) <= idx:
-                                    pending_tool_calls.append(
+                                    idx = len(attempt_pending_tool_calls)
+                                while len(attempt_pending_tool_calls) <= idx:
+                                    attempt_pending_tool_calls.append(
                                         {"id": "", "type": "function", "function": {"name": "", "arguments": ""}}
                                     )
-                                entry = pending_tool_calls[idx]
+                                entry = attempt_pending_tool_calls[idx]
                                 func = tc.get("function", {})
                                 if tc.get("id"):
                                     entry["id"] = tc["id"]
@@ -286,10 +289,26 @@ async def run_agent(
                         if chunk.finish_reason == "stop" or (chunk.finish_reason and not chunk.tool_calls):
                             stream_finish_reason = chunk.finish_reason
                             break
-                if not delta_buffer and not pending_tool_calls:
+
+                if cancelled:
+                    if attempt_delta:
+                        session.add_assistant_message(attempt_delta)
+                        full_response += attempt_delta
+                    pending_tool_calls = []
+                    delta_buffer = attempt_delta
+                    break
+
+                if not attempt_delta and not attempt_pending_tool_calls:
                     err = RuntimeError("Provider returned an empty response")
                     err.retryable = False  # Empty response likely means bad model/config, not transient
                     raise err
+
+                # Commit successful attempt
+                delta_buffer = attempt_delta
+                reasoning_buffer = attempt_reasoning
+                pending_tool_calls = attempt_pending_tool_calls
+                full_response += attempt_delta
+                output_tokens_total += max(1, len(attempt_delta) // 4)
                 stream_succeeded = True
                 break
             except asyncio.CancelledError:
@@ -302,6 +321,7 @@ async def run_agent(
                 if not getattr(exc, "retryable", True) or not should_retry:
                     break
                 if on_event:
+                    on_event(AgentEvent("stream_reset", {}))
                     on_event(AgentEvent("provider_retry", {
                         "attempt": provider_attempt + 1,
                         "max_attempts": MAX_PROVIDER_RETRIES + 1,
@@ -322,7 +342,7 @@ async def run_agent(
             session.add_assistant_message(delta_buffer, tool_calls=pending_tool_calls)
             messages = get_messages()
 
-            for tc in pending_tool_calls:
+            for tc_idx, tc in enumerate(pending_tool_calls):
                 func = tc.get("function", {})
                 tool_name = func.get("name", "")
                 raw_args = func.get("arguments", "{}")
@@ -345,6 +365,24 @@ async def run_agent(
                     messages = get_messages()
                     continue
 
+                # Unwrap deferred tool_call to enforce permission, plan-mode, and profile checks
+                if tool_name == "tool_call" and isinstance(args, dict) and "name" in args:
+                    inner_name = args.get("name", "")
+                    inner_args = args.get("arguments", {})
+                    if inner_name == "tool_call":
+                        output = "Error: Recursive tool_call invocation is not allowed."
+                        session.add_tool_result(tool_call_id, tool_name, output)
+                        if on_event:
+                            on_event(AgentEvent("tool_result", {
+                                "name": tool_name,
+                                "output": output,
+                                "success": False,
+                            }))
+                        messages = get_messages()
+                        continue
+                    tool_name = inner_name
+                    args = inner_args if isinstance(inner_args, dict) else {}
+
                 # ── Plan Mode check ──────────────────────────────────────────
                 if getattr(session, "mode", "build") == "plan" and tool_name in ("write", "write_file", "edit", "edit_file", "apply_patch"):
                     output = "Operation rejected: Plan mode is active. You are in read-only mode and cannot write or edit files. Use /build to switch back to execution mode."
@@ -361,7 +399,7 @@ async def run_agent(
 
                 # ── Permission check ─────────────────────────────────────────
                 perm_description = _describe_tool_call(tool_name, args)
-                perm_path = args.get("filePath") or args.get("path", "")
+                perm_path = args.get("filePath") or args.get("path") or args.get("file_path", "")
                 patch_paths: list[str] = []
                 if tool_name in ("shell", "run_shell", "bash"):
                     perm_path = args.get("command", "")
@@ -422,7 +460,7 @@ async def run_agent(
                 # ── Snapshot before write/edit for file tracker ──────────────
                 before_content = await _snapshot_before(tool_name, args)
 
-                # ── Execute tool ─────────────────────────────────────────────
+                # ── Execute tool with file lock if mutating a file ───────────
                 # Check cancellation before executing each tool
                 if cancel_event and cancel_event.is_set():
                     output = "Operation cancelled by user."
@@ -432,8 +470,16 @@ async def run_agent(
                     messages = get_messages()
                     continue
 
+                from ..tools.file_tools import _get_file_lock
+                lock_path = perm_path if is_file_mutation and perm_path else None
+                file_lock = _get_file_lock(lock_path) if lock_path else None
+
                 try:
-                    result = await tool_registry.execute(tool_name, **args)
+                    if file_lock:
+                        async with file_lock:
+                            result = await tool_registry.execute(tool_name, **args)
+                    else:
+                        result = await tool_registry.execute(tool_name, **args)
                 except asyncio.CancelledError:
                     output = "Operation cancelled by parent agent."
                     session.add_tool_result(tool_call_id, tool_name, output)
@@ -525,8 +571,7 @@ async def run_agent(
                     if on_event:
                         on_event(AgentEvent("error", f"Doom loop detected on {tool_name}"))
                     # Answer any remaining pending tool calls so session is not corrupted for LLM API
-                    curr_idx = pending_tool_calls.index(tc)
-                    for rem_tc in pending_tool_calls[curr_idx + 1:]:
+                    for rem_tc in pending_tool_calls[tc_idx + 1:]:
                         rem_id = rem_tc.get("id") or f"call_{int(time.time()*1000)}"
                         rem_name = rem_tc.get("function", {}).get("name", "unknown")
                         session.add_tool_result(rem_id, rem_name, "Operation skipped due to preceding doom loop error.")
@@ -559,8 +604,8 @@ async def run_agent(
     if on_event:
         on_event(AgentEvent("token_usage", {
             "count": final_count,
-            "model": cfg.active_model,
-            "display": format_usage(final_count, cfg.active_model),
+            "model": effective_model or cfg.active_model,
+            "display": format_usage(final_count, effective_model or cfg.active_model),
         }))
         on_event(AgentEvent("done", full_response))
 
@@ -570,7 +615,7 @@ async def run_agent(
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 def _describe_tool_call(tool_name: str, args: dict[str, Any]) -> str:
-    path = args.get("filePath") or args.get("path", "?")
+    path = args.get("filePath") or args.get("path") or args.get("file_path", "?")
     if tool_name in ("write", "write_file"):
         size = len(args.get("content", ""))
         return f"Write {size} bytes to {path}"
@@ -600,13 +645,13 @@ async def _snapshot_before(tool_name: str, args: dict[str, Any]) -> str | None:
     path = args.get("filePath") or args.get("path", "")
     if not path:
         return None
-    from ..core.workspace import resolve_workspace_path
-    p = resolve_workspace_path(path)
-    if p.exists() and p.is_file():
-        try:
+    try:
+        from ..core.workspace import resolve_workspace_path
+        p = resolve_workspace_path(path)
+        if p.exists() and p.is_file():
             return await asyncio.to_thread(p.read_text, errors="replace")
-        except Exception:
-            return None
+    except (PermissionError, OSError, Exception):
+        return None
     return None  # file doesn't exist yet = "created"
 
 
@@ -617,10 +662,11 @@ def _record_change(tracker, tool_name: str, args: dict[str, Any], before: str | 
     path = args.get("filePath") or args.get("path", "")
     if not path:
         return
-    from ..core.workspace import resolve_workspace_path
-    p = resolve_workspace_path(path)
-    # File tools (write, edit, apply_patch) record changes directly to tracker
-    # after formatting. Here we only invalidate skills cache if needed.
-    if p.name == "SKILL.md" or p.name.endswith("SKILL.md"):
-        invalidate_cache(str(p.parent))
+    try:
+        from ..core.workspace import resolve_workspace_path
+        p = resolve_workspace_path(path)
+        if p.name == "SKILL.md" or p.name.endswith("SKILL.md"):
+            invalidate_cache(str(p.parent))
+    except (PermissionError, OSError, Exception):
+        return
 

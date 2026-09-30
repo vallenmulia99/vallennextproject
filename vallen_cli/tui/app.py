@@ -1137,6 +1137,12 @@ class MainScreen(Screen):
                 nonlocal full_response, active_tool_card, stream_widget
                 if cancel.is_set():
                     return
+                if event.kind == "stream_reset":
+                    if stream_widget is not None:
+                        stream_widget.remove()
+                        stream_widget = None
+                    full_response = ""
+                    return
                 if event.kind == "token":
                     if stream_widget is None:
                         stream_widget = StreamingMessage()

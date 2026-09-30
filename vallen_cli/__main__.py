@@ -19,7 +19,7 @@ def main() -> None:
         print(f"VALLEN CLI v{__version__}")
         sys.exit(0)
 
-    if "--help" in args or "-h" in args or (args and args[0] in ("help", "bantuan")):
+    if ("--help" in args or "-h" in args) and (not args or args[0] not in ("run", "serve")):
         _print_help()
         sys.exit(0)
 
@@ -40,8 +40,12 @@ def main() -> None:
         print("\nBye.")
         sys.exit(0)
     except ImportError as e:
-        print(f"\n✗ Missing dependency: {e}")
-        print("Run:  pip install -e /home/VALLEN/Desktop/src")
+        if debug:
+            import traceback
+            traceback.print_exc()
+        else:
+            print(f"\n✗ Missing dependency: {e}")
+            print("Run:  pip install -e .")
         sys.exit(1)
     except Exception as e:
         if debug:
@@ -61,24 +65,25 @@ def _launch(debug: bool = False) -> None:
 
 def _run_server(args: list[str], debug: bool = False) -> None:
     """Handle: vallencli serve [--port 4096] [--host 127.0.0.1]"""
+    import argparse
     import asyncio
-    port = 4096
-    host = "127.0.0.1"
 
-    i = 0
-    while i < len(args):
-        if args[i] in ("--port", "-p") and i + 1 < len(args):
-            port = int(args[i + 1])
-            i += 2
-        elif args[i] in ("--host", "-h") and i + 1 < len(args):
-            host = args[i + 1]
-            i += 2
-        else:
-            i += 1
+    parser = argparse.ArgumentParser(prog="vallencli serve", description="Start REST/SSE daemon")
+    parser.add_argument("--port", "-p", type=int, default=4096, help="Port to listen on (1-65535)")
+    parser.add_argument("--host", type=str, default="127.0.0.1", help="Host address to bind")
+
+    try:
+        parsed = parser.parse_args(args)
+    except SystemExit:
+        return
+
+    if parsed.port < 1 or parsed.port > 65535:
+        print(f"✗ Port out of range: {parsed.port}. Must be 1-65535.", file=sys.stderr)
+        sys.exit(1)
 
     from vallen_cli.core.server import start_server
     try:
-        asyncio.run(start_server(host=host, port=port))
+        asyncio.run(start_server(host=parsed.host, port=parsed.port))
     except KeyboardInterrupt:
         print("\nServer stopped.")
     except Exception as e:
@@ -91,52 +96,39 @@ def _run_server(args: list[str], debug: bool = False) -> None:
 
 
 def _run_headless(args: list[str], debug: bool = False) -> None:
-    """Handle: vallencli run "prompt" [--project <path>] [--quiet] [--no-tools]"""
+    """Handle: vallencli run "prompt" [--project <path>] [--quiet] [--no-tools] [--continue] [--yes]"""
+    import argparse
     import asyncio
 
-    prompt_parts: list[str] = []
-    project = ""
-    quiet = False
-    use_tools = True
-    session_id = None
+    parser = argparse.ArgumentParser(prog="vallencli run", description="Run prompt headless")
+    parser.add_argument("prompt", nargs="*", help="User prompt to execute")
+    parser.add_argument("--project", "-p", default="", help="Project path")
+    parser.add_argument("--quiet", "-q", action="store_true", help="Minimal output")
+    parser.add_argument("--no-tools", action="store_true", help="Run without tool execution")
+    parser.add_argument("--session", "-s", default=None, help="Resume specific session ID")
+    parser.add_argument("--continue", dest="continue_session", action="store_true", help="Resume last session")
+    parser.add_argument("--yes", "--autopilot", dest="autopilot", action="store_true", help="Allow unsupervised tool execution")
 
-    i = 0
-    while i < len(args):
-        a = args[i]
-        if a in ("--project", "-p") and i + 1 < len(args):
-            project = args[i + 1]
-            i += 2
-        elif a in ("--quiet", "-q"):
-            quiet = True
-            i += 1
-        elif a == "--no-tools":
-            use_tools = False
-            i += 1
-        elif a in ("--session", "-s") and i + 1 < len(args):
-            session_id = args[i + 1]
-            i += 2
-        elif a == "--continue":
-            # Continue last session (session_id handled inside headless)
-            i += 1
-        elif not a.startswith("-"):
-            prompt_parts.append(a)
-            i += 1
-        else:
-            i += 1
+    try:
+        parsed = parser.parse_args(args)
+    except SystemExit:
+        return
 
-    prompt = " ".join(prompt_parts)
+    prompt = " ".join(parsed.prompt).strip()
     if not prompt:
-        print("Usage: vallencli run \"your prompt\" [--project <path>]")
+        print('Usage: vallencli run "your prompt" [--project <path>]')
         sys.exit(1)
 
     from vallen_cli.core.headless import run_headless
     try:
         exit_code = asyncio.run(run_headless(
             prompt=prompt,
-            project_path=project,
-            use_tools=use_tools,
-            session_id=session_id,
-            quiet=quiet,
+            project_path=parsed.project,
+            use_tools=not parsed.no_tools,
+            session_id=parsed.session,
+            continue_session=parsed.continue_session,
+            autopilot=parsed.autopilot,
+            quiet=parsed.quiet,
         ))
         sys.exit(exit_code)
     except Exception as e:

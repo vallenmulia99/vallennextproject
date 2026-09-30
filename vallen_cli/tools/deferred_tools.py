@@ -96,7 +96,22 @@ class ToolCallTool(BaseTool):
     }
 
     async def execute(self, name: str, arguments: dict[str, Any] | None = None, **kwargs: Any) -> ToolResult:
-        from .registry import get_tool_registry
+        from .registry import get_tool_registry, tool_names_for_profile
+        from ..core.session import get_session_manager
+
+        if name == "tool_call":
+            return ToolResult(success=False, output="", error="Recursive tool_call invocation is not allowed.")
+
+        sess_mgr = get_session_manager()
+        active_profile = getattr(sess_mgr, "tool_profile", "full")
+        allowed_names = tool_names_for_profile(active_profile)
+        if allowed_names is not None and name not in allowed_names:
+            return ToolResult(
+                success=False,
+                output="",
+                error=f"Tool '{name}' is not permitted under the active profile '{active_profile}'.",
+            )
+
         reg = get_tool_registry()
         args = arguments or {}
         return await reg.execute(name, **args)

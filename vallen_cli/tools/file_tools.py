@@ -11,15 +11,28 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import hashlib
 import difflib
 import fnmatch
+import hashlib
+import json
+import logging
 import os
 import re
 import shutil
-import subprocess
+import sys
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
+
+_FILE_LOCKS: dict[str, asyncio.Lock] = {}
+
+
+def _get_file_lock(path: str) -> asyncio.Lock:
+    resolved = str(Path(path).resolve())
+    if resolved not in _FILE_LOCKS:
+        _FILE_LOCKS[resolved] = asyncio.Lock()
+    return _FILE_LOCKS[resolved]
 
 from .base import BaseTool, ToolResult
 from ..core.workspace import get_workspace
@@ -220,9 +233,20 @@ class ReadTool(BaseTool):
 
             # --- Image file (return as image_url content block) ---
             if p.suffix.lower() in _IMAGE_EXTENSIONS:
+                size = p.stat().st_size
+                MAX_IMAGE_SIZE = 15 * 1024 * 1024  # 15 MB
+                if size > MAX_IMAGE_SIZE:
+                    return ToolResult(
+                        success=False,
+                        output="",
+                        error=f"Image file too large: {size:,} bytes (maximum: {MAX_IMAGE_SIZE:,} bytes)",
+                    )
                 raw_bytes = await asyncio.to_thread(p.read_bytes)
                 b64 = base64.b64encode(raw_bytes).decode("ascii")
-                data_url = f"data:image/{p.suffix.lower().lstrip('.')};base64,{b64}"
+                mime_ext = p.suffix.lower().lstrip(".")
+                if mime_ext == "jpg":
+                    mime_ext = "jpeg"
+                data_url = f"data:image/{mime_ext};base64,{b64}"
                 return ToolResult(
                     success=True,
                     output=f"Image file: {p} ({len(raw_bytes):,} bytes)",
@@ -243,6 +267,15 @@ class ReadTool(BaseTool):
                 )
 
             # --- Text file ---
+            size = p.stat().st_size
+            MAX_TEXT_SIZE = 50 * 1024 * 1024  # 50 MB
+            if size > MAX_TEXT_SIZE:
+                return ToolResult(
+                    success=False,
+                    output="",
+                    error=f"File too large to read into memory: {size:,} bytes (maximum: {MAX_TEXT_SIZE:,} bytes)",
+                )
+
             raw = await asyncio.to_thread(p.read_text, errors="replace")
             mark_file_read(str(p))
 
@@ -265,12 +298,24 @@ class ReadTool(BaseTool):
             # Batasi output per karakter (~20.000 karakter)
             MAX_OUTPUT_CHARS = 20000
             if len(body) > MAX_OUTPUT_CHARS:
-                # Potong dengan catatan lanjut yang jelas
-                body = body[:MAX_OUTPUT_CHARS] + f"\n\n<response clipped><NOTE>Output truncated at {MAX_OUTPUT_CHARS:,} characters. To read more, call read again with offset={end_idx + 1} and limit={limit}. Total lines: {total_lines}.</NOTE>"
-
-            # Hapus <line_hashes> dari output default (hanya opsional via parameter)
-            # Catatan lanjut tetap ada jika end_idx < total_lines
-            if end_idx < total_lines:
+                # Find the last line that fits within the character budget
+                accum_chars = 0
+                lines_fit = 0
+                for fl in formatted_lines:
+                    if accum_chars + len(fl) + 1 > MAX_OUTPUT_CHARS:
+                        break
+                    accum_chars += len(fl) + 1
+                    lines_fit += 1
+                if lines_fit == 0:
+                    lines_fit = 1
+                truncated_body = "\n".join(formatted_lines[:lines_fit])
+                next_offset = start_idx + lines_fit + 1
+                body = (
+                    truncated_body +
+                    f"\n\n<response clipped><NOTE>Output truncated at {len(truncated_body):,} characters. "
+                    f"To read more, call read again with offset={next_offset} and limit={limit}. Total lines: {total_lines}.</NOTE>"
+                )
+            elif end_idx < total_lines:
                 next_offset = end_idx + 1
                 body += (
                     f"\n\n<response clipped><NOTE>To read more of the file, call read again with "
@@ -463,15 +508,18 @@ def smart_replace(
 
     # 4. Indentation & Whitespace tolerant line matching (crucial for Go tabs vs spaces)
     lines = norm_content.splitlines(keepends=True)
-    lines_stripped = [l.strip() for l in lines]
+    non_empty_file_lines = [(i, l.strip()) for i, l in enumerate(lines) if l.strip()]
     target_lines = [l.strip() for l in norm_cleaned.splitlines() if l.strip()]
 
-    if target_lines:
+    if target_lines and non_empty_file_lines:
         n = len(target_lines)
-        match_indices = []
-        for i in range(len(lines_stripped) - n + 1):
-            if lines_stripped[i : i + n] == target_lines:
-                match_indices.append(i)
+        match_spans: list[tuple[int, int]] = []
+        for i in range(len(non_empty_file_lines) - n + 1):
+            window = [stripped for _, stripped in non_empty_file_lines[i : i + n]]
+            if window == target_lines:
+                start_line_idx = non_empty_file_lines[i][0]
+                end_line_idx = non_empty_file_lines[i + n - 1][0]
+                match_spans.append((start_line_idx, end_line_idx))
 
         first_ref = next((l for l in norm_cleaned.splitlines(keepends=True) if l.strip()), "")
 
@@ -493,33 +541,33 @@ def smart_replace(
             res_str = "".join(out)
             return res_str
 
-        if len(match_indices) == 1:
-            idx = match_indices[0]
-            replacement = _adjust_indentation(new_str, lines[idx], first_ref)
-            if not replacement.endswith("\n") and lines[idx + n - 1].endswith("\n"):
+        if len(match_spans) == 1:
+            start_idx, end_idx = match_spans[0]
+            replacement = _adjust_indentation(new_str, lines[start_idx], first_ref)
+            if not replacement.endswith("\n") and lines[end_idx].endswith("\n"):
                 replacement += "\n"
-            new_lines = lines[:idx] + [replacement] + lines[idx + n :]
+            new_lines = lines[:start_idx] + [replacement] + lines[end_idx + 1 :]
             res = "".join(new_lines)
             if "\r\n" in content:
                 res = res.replace("\n", "\r\n")
             return True, res, 1, None
-        elif len(match_indices) > 1 and replace_all:
+        elif len(match_spans) > 1 and replace_all:
             curr_lines = list(lines)
-            for idx in reversed(match_indices):
-                replacement = _adjust_indentation(new_str, lines[idx], first_ref)
-                if not replacement.endswith("\n") and lines[idx + n - 1].endswith("\n"):
+            for start_idx, end_idx in reversed(match_spans):
+                replacement = _adjust_indentation(new_str, lines[start_idx], first_ref)
+                if not replacement.endswith("\n") and lines[end_idx].endswith("\n"):
                     replacement += "\n"
-                curr_lines = curr_lines[:idx] + [replacement] + curr_lines[idx + n :]
+                curr_lines = curr_lines[:start_idx] + [replacement] + curr_lines[end_idx + 1 :]
             res = "".join(curr_lines)
             if "\r\n" in content:
                 res = res.replace("\n", "\r\n")
-            return True, res, len(match_indices), None
-        elif len(match_indices) > 1:
+            return True, res, len(match_spans), None
+        elif len(match_spans) > 1:
             return (
                 False,
                 content,
-                len(match_indices),
-                f"Found {len(match_indices)} matches for oldString in {file_name} (whitespace-tolerant). Provide more surrounding context, or set replaceAll=True.",
+                len(match_spans),
+                f"Found {len(match_spans)} matches for oldString in {file_name} (whitespace-tolerant). Provide more surrounding context, or set replaceAll=True.",
             )
 
     return (
@@ -750,8 +798,13 @@ class GrepTool(BaseTool):
         if rg_bin:
             cmd = [rg_bin, "--line-number", "--no-heading", "--color", "never", "--max-count", "100"]
             if include:
-                cmd.extend(["--glob", include])
-            cmd.extend([pattern, str(search_dir)])
+                # Handle potential brace expansion like *.{ts,tsx}
+                if "{" in include and "}" in include:
+                    # Ripgrep natively supports glob matching, but pass directly
+                    cmd.extend(["--glob", include])
+                else:
+                    cmd.extend(["--glob", include])
+            cmd.extend(["-e", pattern, "--", str(search_dir)])
 
             try:
                 proc = await asyncio.create_subprocess_exec(
@@ -773,18 +826,26 @@ class GrepTool(BaseTool):
                 lines = raw_out.splitlines()
                 # Limit total output lines (not per-file)
                 max_output_lines = 100
+                total_matches = len(lines)
                 if len(lines) > max_output_lines:
                     lines = lines[:max_output_lines]
-                output_lines = [f"Found {len(lines)} match(es):\n"]
+                output_lines = [f"Found {total_matches} match(es):\n"]
                 for line in lines:
-                    output_lines.append(f"  {line}")
-                if len(raw_out.splitlines()) > max_output_lines:
-                    output_lines.append(f"\n... ({len(raw_out.splitlines()) - max_output_lines} more matches truncated)")
+                    # Strip search_dir prefix to make path relative to search_dir
+                    clean_line = line
+                    try:
+                        str_sd = str(search_dir)
+                        if clean_line.startswith(str_sd):
+                            clean_line = clean_line[len(str_sd):].lstrip("/\\")
+                    except Exception:
+                        pass
+                    output_lines.append(f"  {clean_line}")
+                if total_matches > max_output_lines:
+                    output_lines.append(f"\n... ({total_matches - max_output_lines} more matches truncated)")
 
                 return ToolResult(success=True, output="\n".join(output_lines))
             except Exception as e:
-                # Fall back to python search on error
-                pass
+                logger.warning(f"ripgrep failed, falling back to python search: {e}")
 
         # Fallback python regex search
         try:
@@ -792,27 +853,50 @@ class GrepTool(BaseTool):
         except re.error as e:
             return ToolResult(success=False, output="", error=f"Invalid regex pattern: {e}")
 
-        matches: list[str] = []
-        ignored = {".git", "__pycache__", "node_modules", ".venv", "venv", ".vallen"}
+        # Expand brace pattern in include, e.g. *.{ts,tsx} -> ['*.ts', '*.tsx']
+        include_patterns: list[str] = []
+        if include:
+            brace_match = re.search(r"\{([^}]+)\}", include)
+            if brace_match:
+                prefix = include[:brace_match.start()]
+                suffix = include[brace_match.end():]
+                options = brace_match.group(1).split(",")
+                include_patterns = [f"{prefix}{opt.strip()}{suffix}" for opt in options]
+            else:
+                include_patterns = [include]
 
-        for root, dirs, files in os.walk(search_dir):
-            dirs[:] = [d for d in dirs if d not in ignored]
-            for file in files:
-                if include and not fnmatch.fnmatch(file, include):
-                    continue
-                file_path = Path(root) / file
-                try:
-                    text = file_path.read_text(errors="replace")
-                    for line_no, line in enumerate(text.splitlines(), start=1):
-                        if regex.search(line):
-                            rel_path = file_path.relative_to(search_dir)
-                            matches.append(f"{rel_path}:{line_no}: {line.strip()[:200]}")
-                            if len(matches) >= 100:
-                                break
-                except Exception:
-                    continue
-                if len(matches) >= 100:
-                    break
+        def _matches_include(filename: str) -> bool:
+            if not include_patterns:
+                return True
+            return any(fnmatch.fnmatch(filename, pat) for pat in include_patterns)
+
+        def _do_sync_search() -> list[str]:
+            res_matches: list[str] = []
+            ignored = {".git", "__pycache__", "node_modules", ".venv", "venv", ".vallen"}
+            for root, dirs, files in os.walk(search_dir):
+                dirs[:] = [d for d in dirs if d not in ignored]
+                for file in files:
+                    if not _matches_include(file):
+                        continue
+                    file_path = Path(root) / file
+                    try:
+                        text = file_path.read_text(errors="replace")
+                        for line_no, line in enumerate(text.splitlines(), start=1):
+                            if regex.search(line):
+                                rel_path = file_path.relative_to(search_dir)
+                                res_matches.append(f"{rel_path}:{line_no}: {line.strip()[:200]}")
+                                if len(res_matches) >= 100:
+                                    return res_matches
+                    except Exception:
+                        continue
+                    if len(res_matches) >= 100:
+                        return res_matches
+            return res_matches
+
+        try:
+            matches = await asyncio.wait_for(asyncio.to_thread(_do_sync_search), timeout=15.0)
+        except asyncio.TimeoutError:
+            return ToolResult(success=False, output="", error="Fallback file search timed out after 15 seconds")
 
         if not matches:
             return ToolResult(success=True, output=f"No matches found for '{pattern}'")

@@ -43,8 +43,17 @@ class SessionManager:
         self._session_id: str | None = None
         self._title: str = "New Session"
         self._cached_system_prompt: str | None = None
-        self.mode: str = "build"  # "build" | "plan"
+        self._mode: str = "build"  # "build" | "plan"
         self.tool_profile: str = "full"
+
+    @property
+    def mode(self) -> str:
+        return self._mode
+
+    @mode.setter
+    def mode(self, val: str) -> None:
+        self._mode = val
+        self._cached_system_prompt = None  # Invalidate cached prompt on mode switch
 
     @property
     def cached_system_prompt(self) -> str | None:

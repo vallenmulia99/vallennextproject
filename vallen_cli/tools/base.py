@@ -122,6 +122,21 @@ class ToolRegistry:
         if not has_var_keyword:
             kwargs = {k: v for k, v in kwargs.items() if k in sig.parameters}
 
+        from .registry import tool_names_for_profile
+        try:
+            from ..core.session import get_session_manager
+            sess_mgr = get_session_manager()
+            active_prof = getattr(sess_mgr, "tool_profile", "full")
+            allowed_names = tool_names_for_profile(active_prof)
+            if allowed_names is not None and tool.name not in allowed_names and not any(a in allowed_names for a in getattr(tool, "aliases", [])):
+                return ToolResult(
+                    success=False,
+                    output="",
+                    error=f"Tool '{_tool_name}' is not permitted under the active profile '{active_prof}'.",
+                )
+        except Exception:
+            pass
+
         try:
             return await tool.execute(**kwargs)
         except Exception as e:
