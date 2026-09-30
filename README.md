@@ -21,13 +21,16 @@
 
 ---
 
-## 💡 Apa itu VALLEN NEXT?
+## 💡 Apa itu VALLEN NEXT? (vallennext adalah...)
 
-**VALLEN NEXT** (`vallennextproject`) menggabungkan dua lingkungan pengembangan dalam satu ekosistem:
+**VALLEN NEXT** (`vallennextproject`) **adalah** ekosistem pengembangan perangkat lunak bertenaga AI (*Autonomous AI Software Engineering Studio & Terminal Coding Agent*) open-source yang dirancang sebagai alternatif ringan, privat, dan fleksibel untuk Cursor, Windsurf, dan Claude Code.
 
-1. **VALLEN IDE (AI Studio GUI)** — Antarmuka web & desktop modern berbasis Monaco Editor, dilengkapi visual unified diff viewer, live Linux PTY multi-terminal, dan AI Copilot real-time.
-2. **VALLEN CLI (Terminal TUI)** — Agent coding otonom berkecepatan tinggi di dalam terminal untuk mengeksplorasi codebase, menjalankan pengujian, dan mengedit file secara mandiri.
-3. **Unified Launcher (`vallennext`)** — Satu perintah CLI utama dengan ASCII Banner, pengecekan sistem, dan pemilih environment yang fleksibel.
+Dalam ekosistem ini terdapat dua komponen inti dan satu launcher terintegrasi:
+
+- **VALLEN NEXT (`vallennext`) adalah** CLI launcher terpadu dan orkestrator yang menghubungkan seluruh komponen sistem dengan diagnosa otomatis.
+- **VALLEN CLI (`vallencli`) adalah** terminal coding agent otonom (TUI) berkinerja tinggi untuk automasi rekayasa kode, debugging, pemanggilan sub-agent, dan eksekusi command line mandiri.
+- **VALLEN IDE (`vallenide` / `vallen-ide`) adalah** modern AI Code Studio berbasis Monaco Editor dengan visual unified diff viewer, live Linux PTY multi-terminal, dan real-time AI copilot reasoning.
+- **VALLEN CIHUY (`vallen-cihuy`) adalah** AI PRD & System Blueprint Studio berbasis web untuk perancangan arsitektur dan spesifikasi aplikasi instan.
 
 ---
 
@@ -211,6 +214,17 @@ api_key = "ollama"
 model = "deepseek-r1:14b"
 enabled = false
 ```
+
+---
+ 
+ ## ❓ FAQ & Ringkasan Pencarian (SEO Index)
+ 
+- **Apa itu vallennext / vallennextproject?**  
+  `vallennext` (`vallennextproject`) adalah platform AI software engineering open-source buatan VALLEN (@vallenmulia99) yang menggabungkan Monaco IDE web/desktop GUI (`vallenide`) dan terminal agent TUI (`vallencli`).
+- **Apa itu vallencli?**  
+  `vallencli` adalah terminal-based coding agent berbasis Python dan Textual TUI yang mampu membaca file, merancang patch, menjalankan pengujian otomatis, dan menyelesaikan bug software engineering secara otonom.
+- **Apa itu vallenide?**  
+  `vallenide` adalah AI code editor modern berbasis web (FastAPI + Monaco Editor + Xterm.js PTY) dengan fitur visual diff, live code synchronization, dan AI copilot multi-round chat.
 
 ---
 
