@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import sys
-import subprocess
 from pathlib import Path
 
 VERSION = "1.1.0-next"
@@ -19,15 +18,9 @@ ASCII_BANNER = r"""
      \/_/    \_\______|______|______|_| \_|_| \_|_____/_/ \_\  |_|   
 """
 
+
 def _get_project_root() -> Path:
-    # Resolve from this file location or standard path
-    p = Path(__file__).resolve().parent.parent
-    if (p / "vallen_ide" / "launch.sh").exists():
-        return p
-    default_p = Path("/home/VALLEN/Desktop/src")
-    if default_p.exists():
-        return default_p
-    return p
+    return Path(__file__).resolve().parent.parent
 
 
 def _get_active_workspace() -> str:
@@ -49,54 +42,13 @@ def _get_active_workspace() -> str:
     return os.getcwd()
 
 
-def launch_ide() -> None:
-    root = _get_project_root()
-    script = root / "vallen_ide" / "launch.sh"
-    if not script.exists():
-        print(f"✗ Script tidak ditemukan: {script}")
-        return
-    print("\n🚀 Menyalakan VALLEN IDE Studio...")
-    subprocess.run(["bash", str(script)], cwd=str(root))
-
-
-def launch_cihuy() -> None:
-    root = _get_project_root()
-    script = root / "vallen_ide" / "launch.sh"
-    try:
-        import urllib.request
-        req = urllib.request.Request("http://127.0.0.1:8080/api/health")
-        with urllib.request.urlopen(req, timeout=1.0) as res:
-            pass
-    except Exception:
-        if script.exists():
-            print("\n⚡ Menyalakan backend VALLEN CIHUY Studio...")
-            subprocess.run(["bash", str(script)], cwd=str(root))
-
-    url = "http://localhost:8080/cihuy"
-    print(f"\n✨ Membuka ⚡ VALLEN CIHUY PRD Studio di {url}...")
-    import webbrowser
-    webbrowser.open(url)
-
-
 def launch_cli() -> None:
     from vallen_cli.__main__ import main as cli_main
     sys.argv = ["vallencli"]
     cli_main()
 
 
-def stop_ide() -> None:
-    root = _get_project_root()
-    script = root / "vallen_ide" / "launch.sh"
-    if script.exists():
-        subprocess.run(["bash", str(script), "--stop"], cwd=str(root))
-    else:
-        print("✗ Script launch.sh tidak ditemukan.")
-
-
 def check_status() -> None:
-    import urllib.request
-    import json
-
     root = _get_project_root()
     workspace = _get_active_workspace()
     
@@ -107,21 +59,6 @@ def check_status() -> None:
     print(f" • Author      : {AUTHOR}")
     print(f" • Workspace   : {workspace}")
     print(f" • Root Folder : {root}")
-
-    # Check IDE Server
-    ide_running = False
-    try:
-        req = urllib.request.Request("http://127.0.0.1:8080/api/health", headers={"User-Agent": "vallennext"})
-        with urllib.request.urlopen(req, timeout=1.5) as res:
-            if res.status == 200:
-                ide_running = True
-    except Exception:
-        ide_running = False
-
-    if ide_running:
-        print(" • Server IDE  : 🟢 AKTIF di http://localhost:8080")
-    else:
-        print(" • Server IDE  : 🔴 MATI (Gunakan 'vallennext ide' untuk menyalakan)")
 
     # Check Active AI Provider
     try:
@@ -149,14 +86,14 @@ def print_banner() -> None:
     RESET = "\033[0m"
 
     print(f"{PURPLE}{ASCII_BANNER}{RESET}")
-    print(f"{CYAN}{'⚡ AUTONOMOUS AI SOFTWARE ENGINEERING STUDIO ⚡':^70}{RESET}")
+    print(f"{CYAN}{'⚡ AUTONOMOUS AI SOFTWARE ENGINEERING CLI ⚡':^70}{RESET}")
     print(f"{DIM}{'Created with ❤️ by ' + AUTHOR:^70}{RESET}\n")
 
     print(f"{DIM} ─────────────────────────────────────────────────────────────────────────────{RESET}")
     print(f"  {BOLD}📌 Versi{RESET}     : {GREEN}v{VERSION}{RESET}")
     print(f"  {BOLD}👤 Author{RESET}    : {YELLOW}{AUTHOR}{RESET}")
     print(f"  {BOLD}📂 Workspace{RESET} : {CYAN}{workspace}{RESET}")
-    print(f"  {BOLD}🤖 Engine{RESET}    : VALLEN Core + Monaco Studio & Terminal Agent")
+    print(f"  {BOLD}🤖 Engine{RESET}    : VALLEN Core Terminal Agent")
     print(f"{DIM} ─────────────────────────────────────────────────────────────────────────────{RESET}\n")
 
 
@@ -215,43 +152,33 @@ def interactive_menu() -> None:
 
     BOLD = "\033[1m"
     CYAN = "\033[1;36m"
-    PURPLE = "\033[1;35m"
+    GREEN = "\033[1;32m"
     DIM = "\033[2m"
     RESET = "\033[0m"
 
-    print(f"{BOLD}Pilih environment yang ingin kamu buka:{RESET}\n")
-    print(f"  {PURPLE}❯ [1]{RESET} {BOLD}⚡ VALLEN IDE{RESET}   — Studio GUI Modern (Monaco Editor, Visual Diff, Copilot)")
-    print(f"  {CYAN}  [2]{RESET} {BOLD}💻 VALLEN CLI{RESET}   — Terminal TUI Coding Agent (Autonomous Terminal)")
-    print(f"    [4] {BOLD}⚙️  Status & Cek{RESET} — Cek status server IDE & koneksi AI")
-    print(f"  {CYAN}  [3]{RESET} {BOLD}✨ VALLEN CIHUY{RESET} — AI PRD & System Blueprint Studio (Web)")
-    print(f"    [5] {BOLD}🛑 Stop IDE Server{RESET} — Hentikan background server IDE")
-    print(f"    [7] {BOLD}🔑 9Router Token{RESET}   — Set API token & endpoint 9Router")
-    print(f"    [6] {BOLD}✕  Keluar{RESET}\n")
+    print(f"{BOLD}Pilihan menu:{RESET}\n")
+    print(f"  {GREEN}❯ [1]{RESET} {BOLD}💻 VALLEN CLI{RESET}    — Terminal TUI Coding Agent (Autonomous Terminal)")
+    print(f"    [2] {BOLD}⚙️  Status & Cek{RESET}  — Cek status workspace & konfigurasi AI")
+    print(f"    [3] {BOLD}🔑 9Router Token{RESET} — Set API token & endpoint 9Router")
+    print(f"    [4] {BOLD}✕  Keluar{RESET}\n")
 
     try:
-        choice = input(f"{BOLD}Ketik nomor pilihan (1/2/3/4/5/6/7) [Default 1]: {RESET}").strip()
+        choice = input(f"{BOLD}Ketik nomor pilihan (1/2/3/4) [Default 1]: {RESET}").strip()
     except (KeyboardInterrupt, EOFError):
         print("\nSampai jumpa!")
         sys.exit(0)
 
-    if not choice or choice == "1" or choice.lower() in ("ide", "studio"):
-        launch_ide()
-    elif choice == "2" or choice.lower() in ("cli", "tui"):
+    if not choice or choice == "1" or choice.lower() in ("cli", "tui"):
         launch_cli()
-    elif choice == "3" or choice.lower() in ("cihuy", "prd"):
-        launch_cihuy()
-    elif choice == "4" or choice.lower() == "status":
+    elif choice == "2" or choice.lower() == "status":
         check_status()
-    elif choice == "5" or choice.lower() == "stop":
-        stop_ide()
-    elif choice == "7" or choice.lower() in ("token", "9router", "apikey"):
+    elif choice == "3" or choice.lower() in ("token", "9router", "apikey"):
         configure_9router_token()
-    elif choice == "6" or choice.lower() in ("q", "exit", "keluar"):
+    elif choice == "4" or choice.lower() in ("q", "exit", "keluar"):
         print("Sampai jumpa!")
         sys.exit(0)
     else:
-        print(f"Pilihan '{choice}' tidak dikenal. Membuka VALLEN IDE...")
-        launch_ide()
+        print(f"Pilihan '{choice}' tidak dikenal.")
 
 
 def main() -> None:
@@ -266,10 +193,9 @@ def main() -> None:
         print_banner()
         print("""Penggunaan:
   vallennext                  Buka menu interaktif VALLEN NEXT
-  vallennext ide              Buka VALLEN IDE Studio langsung
   vallennext cli              Buka VALLEN CLI Terminal TUI langsung
-  vallennext status           Cek status server IDE dan workspace
-  vallennext stop             Hentikan background server IDE
+  vallennext status           Cek status workspace dan konfigurasi AI
+  vallennext run "prompt"     Jalankan prompt headless (no TUI)
   vallennext -v, --version    Tampilkan versi
   vallennext --help           Bantuan ini
 """)
@@ -278,20 +204,11 @@ def main() -> None:
     # Subcommands
     if args:
         cmd = args[0].lower()
-        if cmd == "ide":
-            launch_ide()
-            return
-        elif cmd == "cli":
+        if cmd == "cli":
             launch_cli()
-            return
-        elif cmd in ("cihuy", "--cihuy", "prd"):
-            launch_cihuy()
             return
         elif cmd in ("status", "--status"):
             check_status()
-            return
-        elif cmd in ("stop", "--stop"):
-            stop_ide()
             return
         elif cmd == "run":
             from vallen_cli.__main__ import _run_headless

@@ -340,21 +340,3 @@ async def _provider_compact_messages(
     except Exception:
         return None
     return None
-
-
-def provider_compaction_available(provider: Any) -> bool:
-    """Capability check for optional provider-native compaction."""
-    return callable(getattr(provider, "compact", None))
-
-
-async def compact_with_provider_or_local(provider: Any, on_status: Callable[[str], None] | None = None) -> tuple[bool, str]:
-    """Use provider compaction when implemented; otherwise use local compaction."""
-    compact = getattr(provider, "compact", None)
-    if callable(compact):
-        try:
-            result = await compact()
-            return True, str(result or "Provider compaction complete.")
-        except Exception as exc:
-            if on_status:
-                on_status(f"Provider compaction failed; using local fallback: {exc}")
-    return await compact_session(on_status=on_status)

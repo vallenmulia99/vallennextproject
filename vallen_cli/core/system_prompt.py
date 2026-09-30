@@ -147,7 +147,7 @@ Here is some useful information about the environment you are running in:
    - On macOS: Use Homebrew or macOS-specific commands.
 2. Root Privileges & Sudo:
    - When executing commands requiring root privileges (e.g. `sudo apt install`, system services), note that background tools cannot type passwords interactively.
-   - If a command requires `sudo`, inform the user. The VALLEN IDE terminal will automatically pop open and prompt the user to safely type their password in the live interactive terminal."""
+   - If a command requires `sudo`, inform the user and ask the user to run the command directly in their terminal."""
 
 
 async def build_full_system_prompt(

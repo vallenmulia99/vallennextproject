@@ -100,7 +100,7 @@ async def _cmd_cd(raw: str) -> CommandResult:
         curr = ws.active_project_path or "(none)"
         return CommandResult(
             handled=True,
-            output=f"Current project: {curr}\n\nUsage: `/cd <path>`\nExamples:\n  `/cd ~/Desktop/myproject`\n  `/cd /home/VALLEN/Documents/testidevallen`\n  `/cd .` (current folder)",
+            output=f"Current project: {curr}\n\nUsage: `/cd <path>`\nExamples:\n  `/cd ~/Desktop/myproject`\n  `/cd /var/www/myproject`\n  `/cd .` (current folder)",
             kind="info",
         )
 
@@ -1123,7 +1123,7 @@ Keyboard
   Shift+Enter  New line (multiline)
 
 Usage examples
-  /cd /home/VALLEN/Documents/testidevallen
+  /cd ~/Desktop/myproject
   @src/main.py jelaskan file ini
   !git status
   /models
