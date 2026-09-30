@@ -1343,9 +1343,16 @@ class MainScreen(Screen):
     def action_cancel_generation(self) -> None:
         if self._cancel_event:
             self._cancel_event.set()
-        # Also cancel the agent task if it exists (second safety net)
-        if hasattr(self, '_agent_task') and self._agent_task:
-            self._agent_task.cancel()
+        # Cooperative cancel: allow agent turn to finalize pending tool results first
+        if hasattr(self, '_agent_task') and self._agent_task and not self._agent_task.done():
+            async def _delayed_force_cancel():
+                try:
+                    await asyncio.sleep(2.0)
+                    if hasattr(self, '_agent_task') and self._agent_task and not self._agent_task.done():
+                        self._agent_task.cancel()
+                except asyncio.CancelledError:
+                    pass
+            asyncio.create_task(_delayed_force_cancel())
 
     def action_quit(self) -> None:
         # Stop health monitor on quit

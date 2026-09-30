@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from .database import get_session_db
@@ -89,16 +90,30 @@ class SessionManager:
         return sid
 
     def resume(self, session_id: str) -> bool:
-        """Load an existing session from the DB."""
+        """Load an existing session from the DB and sanitize tool calls."""
         session = self._db.get_session(session_id)
         if not session:
             return False
         self._session_id = session_id
         self._ws.active_session_id = session_id
         self._title = session.get("title", "Session")
-        # Reconstruct Message objects
+        self._cached_system_prompt = None
+        try:
+            from ..tools.file_tools import clear_read_cache
+            clear_read_cache()
+        except ImportError:
+            pass
+        from .permission import get_permission_manager
+        get_permission_manager().reset()
+
+        # Update active workspace if session has a valid project directory
+        proj = session.get("project")
+        if proj and Path(proj).is_dir():
+            self._ws.set_active_project(str(Path(proj).resolve()))
+
+        # Reconstruct and sanitize Message objects
         raw = self._db.get_messages(session_id)
-        self._messages = [
+        reconstructed = [
             Message(
                 role=m["role"],
                 content=m["content"],
@@ -107,8 +122,29 @@ class SessionManager:
                 name=m.get("name"),
             )
             for m in raw
-            if m["role"] != "system"  # system prompt rebuilt fresh each call
+            if m["role"] != "system"
         ]
+
+        # Sanitize orphaned tool_calls (guarantee each tool_call_id has a result)
+        seen_results = {m.tool_call_id for m in reconstructed if m.role == "tool" and m.tool_call_id}
+        sanitized_messages: list[Message] = []
+        for msg in reconstructed:
+            sanitized_messages.append(msg)
+            if msg.role == "assistant" and msg.tool_calls:
+                for tc in msg.tool_calls:
+                    tc_id = tc.get("id")
+                    if tc_id and tc_id not in seen_results:
+                        fn_name = tc.get("function", {}).get("name", "tool")
+                        fallback_tool_msg = Message(
+                            role="tool",
+                            content="Operation cancelled or interrupted before completion.",
+                            tool_call_id=tc_id,
+                            name=fn_name,
+                        )
+                        sanitized_messages.append(fallback_tool_msg)
+                        seen_results.add(tc_id)
+
+        self._messages = sanitized_messages
         return True
 
     def resume_last(self) -> str:

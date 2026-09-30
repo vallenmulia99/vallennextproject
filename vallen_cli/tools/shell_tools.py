@@ -143,6 +143,13 @@ async def _run_command(
             stdout.decode(errors="replace"),
             stderr.decode(errors="replace"),
         )
+    except asyncio.CancelledError:
+        if proc.returncode is None:
+            try:
+                os.killpg(os.getpgid(proc.pid), 9)
+            except (ProcessLookupError, OSError):
+                pass
+        raise
     except asyncio.TimeoutError:
         # Kill the entire process group, not just the shell process
         try:

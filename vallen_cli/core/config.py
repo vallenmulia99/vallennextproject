@@ -6,6 +6,7 @@ import os
 import json
 from pathlib import Path
 from typing import Any
+import sys
 
 import toml
 
@@ -105,17 +106,24 @@ class Config:
     def load(self) -> None:
         """Load config from disk, merging with defaults."""
         self._data = _deep_merge(DEFAULT_CONFIG, {})
+        # ── 1. Read global user config (~/.config/vallen/config.toml) ──
         if CONFIG_FILE.exists():
             try:
                 file_data = toml.loads(CONFIG_FILE.read_text())
                 self._data = _deep_merge(self._data, file_data)
-            except Exception:
-                pass  # Fall back to defaults silently
+            except Exception as e:
+                import time
+                ts = int(time.time())
+                bak = CONFIG_FILE.with_name(f"config.toml.bak-{ts}")
+                try:
+                    bak.write_bytes(CONFIG_FILE.read_bytes())
+                except Exception:
+                    pass
+                print(f"⚠️  Warning: Failed to parse {CONFIG_FILE}: {e}. Backup created at {bak}", file=sys.stderr)
 
-        # Auto-detect models.json in project or config dir
+        # ── 2. Read project models (.vallen/models.json ONLY) without persisting or overwriting base_url/api_key ──
         for candidate in [
             Path(".vallen/models.json"),
-            Path("models.json"),
             CONFIG_DIR / "models.json",
         ]:
             if candidate.exists():
@@ -134,15 +142,17 @@ class Config:
                             prov_key = p_name
 
                         prov_cfg = self._data.setdefault("providers", {}).setdefault(prov_key, {})
-                        if m.get("title"):
+                        if m.get("title") and "title" not in prov_cfg:
                             prov_cfg["title"] = m["title"]
                         base_url = m.get("apiBase") or m.get("base_url")
-                        if base_url:
+                        # Do NOT overwrite existing provider's base_url or api_key from project files!
+                        if base_url and "base_url" not in prov_cfg:
                             prov_cfg["base_url"] = base_url
                         api_key = m.get("apiKey") or m.get("api_key")
-                        if api_key:
+                        if api_key and "api_key" not in prov_cfg:
                             prov_cfg["api_key"] = api_key
-                        prov_cfg["model"] = m_id
+                        if "model" not in prov_cfg:
+                            prov_cfg["model"] = m_id
                         prov_models = prov_cfg.setdefault("models", [])
                         if m_id not in prov_models:
                             prov_models.append(m_id)
@@ -151,8 +161,23 @@ class Config:
                     pass
 
     def save(self) -> None:
-        """Persist config to disk."""
-        CONFIG_FILE.write_text(toml.dumps(self._data))
+        """Persist config to disk atomically with 0600 permissions."""
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        tmp_file = CONFIG_FILE.with_name(f"config.tmp.{os.getpid()}")
+        try:
+            content = toml.dumps(self._data)
+            # Create file with 0600 mode
+            fd = os.open(str(tmp_file), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(content)
+            os.replace(str(tmp_file), str(CONFIG_FILE))
+        except Exception:
+            if tmp_file.exists():
+                try:
+                    tmp_file.unlink()
+                except Exception:
+                    pass
+            raise
 
     def get(self, *keys: str, default: Any = None) -> Any:
         """Dot-path access: config.get('providers', '9router', 'model')."""

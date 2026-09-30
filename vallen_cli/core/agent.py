@@ -342,6 +342,7 @@ async def run_agent(
             session.add_assistant_message(delta_buffer, tool_calls=pending_tool_calls)
             messages = get_messages()
 
+            stop_turn_due_to_doom = False
             for tc_idx, tc in enumerate(pending_tool_calls):
                 func = tc.get("function", {})
                 tool_name = func.get("name", "")
@@ -407,7 +408,11 @@ async def run_agent(
                     from ..tools.patch_tools import parse_vallen_patch
                     try:
                         hunks = parse_vallen_patch(args.get("patchText", ""))
-                        patch_paths = [h.path for h in hunks if h.path]
+                        for h in hunks:
+                            if h.path:
+                                patch_paths.append(h.path)
+                            if h.move_to:
+                                patch_paths.append(h.move_to)
                         if patch_paths:
                             perm_path = ", ".join(patch_paths)
                     except Exception:
@@ -568,6 +573,7 @@ async def run_agent(
                 session.add_tool_result(tool_call_id, tool_name, tool_msg_content)
 
                 if doom_triggered:
+                    stop_turn_due_to_doom = True
                     if on_event:
                         on_event(AgentEvent("error", f"Doom loop detected on {tool_name}"))
                     # Answer any remaining pending tool calls so session is not corrupted for LLM API
@@ -579,6 +585,8 @@ async def run_agent(
 
             messages = get_messages()
             tool_round += 1
+            if stop_turn_due_to_doom:
+                break
         else:
             if delta_buffer:
                 session.add_assistant_message(delta_buffer)

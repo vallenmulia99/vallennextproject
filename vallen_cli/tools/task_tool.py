@@ -258,21 +258,27 @@ class TaskTool(BaseTool):
                 prune_tool_outputs_to_budget(messages, subagent_model or cfg.active_model, protected_recent=2)
                 delta_buffer = ""
                 tool_calls: list[dict[str, Any]] = []
+                is_last_sub_round = rounds >= max_sub_rounds
 
                 async for chunk in provider.stream_completion(
                     messages=messages,
                     model=subagent_model,
                     temperature=0.3,
                     max_tokens=4096,
-                    tools=sub_tools,
+                    tools=sub_tools if not is_last_sub_round else None,
                 ):
+                    if chunk.finish_reason == "error":
+                        error_msg = f"Provider error during subagent execution: {chunk.error}"
+                        return ToolResult(success=False, output="", error=error_msg)
+
                     if chunk.content:
                         delta_buffer += chunk.content
-                        final_text += chunk.content
 
                     if chunk.tool_calls:
                         for tc in chunk.tool_calls:
-                            idx = tc.get("index", 0)
+                            idx = tc.get("index")
+                            if idx is None:
+                                idx = len(tool_calls)
                             while len(tool_calls) <= idx:
                                 tool_calls.append(
                                     {"id": "", "type": "function", "function": {"name": "", "arguments": ""}}
@@ -294,10 +300,12 @@ class TaskTool(BaseTool):
                     save_task_messages(active_task_id, [message.to_api_dict() for message in messages])
 
                     async def execute_subagent_tool(tc: dict[str, Any]) -> tuple[str, str, str]:
+                        import time
                         func = tc.get("function", {})
                         t_name = func.get("name", "")
                         raw_args = func.get("arguments", "{}")
-                        t_id = tc.get("id", "")
+                        t_id = tc.get("id") or f"call_sub_{int(time.time()*1000)}"
+
                         try:
                             args = json.loads(raw_args) if raw_args else {}
                         except json.JSONDecodeError:
@@ -306,6 +314,29 @@ class TaskTool(BaseTool):
                         if not isinstance(args, dict):
                             error_msg = f"Error: Tool arguments must be a JSON object, got {type(args).__name__}"
                             return t_id, t_name, error_msg
+
+                        # Resolve aliases (e.g. read_file -> read, write_file -> write)
+                        from .registry import get_tool_registry
+                        reg_check = get_tool_registry()
+                        actual_tool = reg_check.get(t_name)
+                        primary_name = actual_tool.name if actual_tool else t_name
+
+                        if allowed_names is not None and primary_name not in allowed_names:
+                            return t_id, t_name, f"Error: Tool '{t_name}' is not allowed for subagent type '{subagent_type}'."
+
+                        if primary_name == "tool_call":
+                            inner_target = args.get("name", "") if isinstance(args, dict) else ""
+                            if allowed_names is not None and inner_target not in allowed_names:
+                                return t_id, t_name, f"Error: Tool '{inner_target}' is not allowed via tool_call."
+                        # Permission guard for mutating tools when not isolated
+                        if not isolated_path and primary_name in ("write", "write_file", "edit", "edit_file", "apply_patch", "shell", "run_shell"):
+                            from ..core.permission import get_permission_manager, PermRequest
+                            pm = get_permission_manager()
+                            req = PermRequest(tool_name=primary_name, description=f"Subagent '{subagent_type}' execution of {primary_name}")
+                            allowed = await pm.guard(req)
+                            if not allowed:
+                                return t_id, t_name, f"Error: Permission denied by user for {primary_name} in subagent."
+
                         try:
                             async def run_tool():
                                 if isolated_path:
@@ -351,6 +382,7 @@ class TaskTool(BaseTool):
                 else:
                     if delta_buffer:
                         messages.append(Message(role="assistant", content=delta_buffer))
+                        final_text = delta_buffer
                     save_task_messages(active_task_id, [message.to_api_dict() for message in messages])
                     break
 

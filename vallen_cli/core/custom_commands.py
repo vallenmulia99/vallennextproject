@@ -33,20 +33,35 @@ GLOBAL_COMMAND_DIRS = [
 
 def _parse_frontmatter(content: str) -> tuple[dict[str, Any], str]:
     content = content.strip()
-    if not content.startswith("---"):
+    lines = content.splitlines()
+    if not lines or lines[0].strip() != "---":
         return {}, content
-    try:
-        end = content.index("---", 3)
-        fm_text = content[3:end].strip()
-        body = content[end + 3:].strip()
-        meta: dict[str, Any] = {}
-        for line in fm_text.splitlines():
-            if ":" in line:
-                k, _, v = line.partition(":")
-                meta[k.strip()] = v.strip()
-        return meta, body
-    except ValueError:
+
+    end_idx = -1
+    for idx, line in enumerate(lines[1:], start=1):
+        if line.strip() == "---":
+            end_idx = idx
+            break
+
+    if end_idx == -1:
         return {}, content
+
+    fm_text = "\n".join(lines[1:end_idx]).strip()
+    body = "\n".join(lines[end_idx + 1:]).strip()
+    meta: dict[str, Any] = {}
+    for line in fm_text.splitlines():
+        if ":" in line:
+            k, _, v = line.partition(":")
+            v_clean = v.strip()
+            # Proper boolean parsing
+            if v_clean.lower() in ("true", "yes", "1"):
+                parsed_v: Any = True
+            elif v_clean.lower() in ("false", "no", "0"):
+                parsed_v = False
+            else:
+                parsed_v = v_clean
+            meta[k.strip()] = parsed_v
+    return meta, body
 
 
 def load_custom_commands(project_path: str = "") -> dict[str, dict[str, Any]]:
@@ -111,13 +126,10 @@ def expand_command(prompt_template: str, arguments: str = "", cwd: str = "") -> 
     Interpolate arguments and execute shell directives.
     - $ARGUMENTS -> full argument string
     - $1..$9 -> individual positional arguments
-    - !`command` or !command -> runs command in shell and substitutes output
+    - !`command` -> runs command in shell and substitutes output (backtick syntax ONLY)
     
     Security: shell directives receive escaped arguments to prevent injection.
     """
-    # Keep Windows paths intact. POSIX parsing treats every backslash as an
-    # escape and would turn C:\\Users\\me into C:Usersme. A malformed quoted
-    # input must also remain data, never abort command expansion.
     if arguments.strip():
         try:
             args_list = shlex.split(arguments, posix=False)
@@ -125,21 +137,20 @@ def expand_command(prompt_template: str, arguments: str = "", cwd: str = "") -> 
             args_list = [arguments]
     else:
         args_list = []
-    
-    # Shell directive execution FIRST (before global argument substitution)
+
+    # Single-pass substitution on template before executing directives
     def run_shell_directive(match: re.Match) -> str:
-        cmd = match.group(1) or match.group(2)
+        cmd = match.group(1)
         if not cmd:
             return ""
         cmd = cmd.strip()
-        
+
         # Substitute arguments IN SHELL CONTEXT with proper escaping
         cmd_escaped = cmd.replace("$ARGUMENTS", shlex.quote(arguments.strip()) if arguments.strip() else "")
         for i in range(1, 10):
             val = args_list[i - 1] if i <= len(args_list) else ""
-            # Escape for shell and use lambda to avoid backslash interpretation
             cmd_escaped = re.sub(rf"\${i}\b", lambda m, v=shlex.quote(val) if val else "": v, cmd_escaped)
-        
+
         work_dir = cwd if cwd and Path(cwd).is_dir() else None
         try:
             res = subprocess.run(
@@ -158,18 +169,20 @@ def expand_command(prompt_template: str, arguments: str = "", cwd: str = "") -> 
             return f"[Command timed out: {cmd}]"
         except Exception as e:
             return f"[Command failed: {e}]"
-    
-    # Match and process shell directives first
-    pattern = re.compile(r"^!\s*`([^`]+)`|^!\s*([^\n]+)", re.MULTILINE)
+
+    # Only treat !`command` (backtick syntax) as shell directive
+    pattern = re.compile(r"^!\s*`([^`]+)`", re.MULTILINE)
     result = pattern.sub(run_shell_directive, prompt_template)
-    
-    # Now substitute arguments for NON-SHELL parts (prompt text)
-    result = result.replace("$ARGUMENTS", arguments.strip())
-    for i in range(1, 10):
-        val = args_list[i - 1] if i <= len(args_list) else ""
-        # Use lambda to avoid backslash interpretation (fixes crash with backslash in args)
-        result = re.sub(rf"\${i}\b", lambda m, v=val: v, result)
-    
+
+    # Single-pass substitution for prompt text (do NOT re-substitute directive outputs)
+    def _sub_prompt_args(m: re.Match) -> str:
+        token = m.group(0)
+        if token == "$ARGUMENTS":
+            return arguments.strip()
+        num = int(token[1:])
+        return args_list[num - 1] if num <= len(args_list) else ""
+
+    result = re.sub(r"\$(?:ARGUMENTS|[1-9]\b)", _sub_prompt_args, result)
     return result
 
 

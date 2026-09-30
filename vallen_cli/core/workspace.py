@@ -264,8 +264,13 @@ def resolve_workspace_path(path_str: str, enforce_containment: bool = True) -> P
     root_str = _workspace_override.get()
     if root_str is None:
         root_str = get_workspace().active_project_path
+
+    # If no project or scope is set, resolve absolute paths freely
     if not root_str:
-        return p.resolve()
+        if p.is_absolute():
+            return p.resolve()
+        root_str = os.getcwd()
+
     root = Path(root_str).resolve()
     if not p.is_absolute():
         p = root / p

@@ -126,13 +126,25 @@ async def check_file_syntax(file_path: str | Path) -> tuple[bool, str | None]:
             except Exception:
                 return True, None
 
-    # 3. JSON syntax check
+    # 3. JSON syntax check (skip known JSONC files like tsconfig*.json)
     if ext == ".json":
         import json
+        fname = path.name.lower()
+        if fname.startswith("tsconfig") or fname.startswith("jsconfig") or fname in (".eslintrc.json", "devcontainer.json"):
+            return True, None
+        content = path.read_text(errors="replace")
         try:
-            json.loads(path.read_text(errors="replace"))
+            json.loads(content)
             return True, None
         except Exception as e:
-            return False, f"JSON SyntaxError: {e}"
+            # Strip simple JS comments and trailing commas before failing
+            import re
+            cleaned = re.sub(r"//.*?\n|/\*.*?\*/", "", content, flags=re.DOTALL)
+            cleaned = re.sub(r",\s*([\]}])", r"\1", cleaned)
+            try:
+                json.loads(cleaned)
+                return True, None
+            except Exception:
+                return False, f"JSON SyntaxError: {e}"
 
     return True, None

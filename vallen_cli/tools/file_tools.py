@@ -120,6 +120,16 @@ def _resolve(path_str: str) -> Path:
     return resolve_workspace_path(path_str)
 
 
+_SENSITIVE_PATH_PATTERNS = [
+    ".ssh", ".gnupg", ".aws", "config.toml", ".env", "id_rsa", "id_ed25519"
+]
+
+
+def _is_sensitive_path(path_str: str) -> bool:
+    low = path_str.lower().replace("\\", "/")
+    return any(p in low for p in _SENSITIVE_PATH_PATTERNS)
+
+
 def read_text_preserve(path: Path) -> tuple[str, str]:
     """Read text preserving original newline style (LF vs CRLF).
 
@@ -187,12 +197,19 @@ class ReadTool(BaseTool):
         filePath: str = "",
         path: str = "",
         offset: int = 1,
-        limit: int = _DEFAULT_READ_LIMIT,
+        limit: int = 2000,
         **kwargs: Any,
     ) -> ToolResult:
         target_path = filePath or path
         if not target_path:
             return ToolResult(success=False, output="", error="filePath is required")
+
+        if _is_sensitive_path(target_path):
+            return ToolResult(
+                success=False,
+                output="",
+                error=f"Access denied: reading sensitive system/credential path '{target_path}' is blocked.",
+            )
 
         try:
             p = _resolve(target_path)
@@ -397,7 +414,6 @@ class WriteTool(BaseTool):
 
             await asyncio.to_thread(p.parent.mkdir, parents=True, exist_ok=True)
             write_text_preserve(p, content, file_newline)
-            mark_file_read(str(p))
 
             # OpenCode auto-format & fast syntax check
             syntax_warning = ""
@@ -409,6 +425,9 @@ class WriteTool(BaseTool):
                     syntax_warning = f"\n\n⚠️ [Syntax Error detected in {p.name}]:\n{syn_err}\nPlease review and fix this syntax error immediately."
             except Exception:
                 pass
+
+            # Mark file read AFTER format_file so recorded mtime/size matches post-format file
+            mark_file_read(str(p))
 
             # Formatters may change the file. Track the bytes that actually
             # remain on disk so diff and revert state match reality.
@@ -712,7 +731,6 @@ class EditTool(BaseTool):
                 )
 
             write_text_preserve(p, new_content, file_newline)
-            mark_file_read(str(p))
 
             # OpenCode auto-format & fast syntax check
             syntax_warning = ""
@@ -724,6 +742,9 @@ class EditTool(BaseTool):
                     syntax_warning = f"\n\n⚠️ [Syntax Error detected in {p.name}]:\n{syn_err}\nPlease review and fix this syntax error immediately."
             except Exception:
                 pass
+
+            # Mark file read AFTER format_file so recorded mtime/size matches post-format file
+            mark_file_read(str(p))
 
             # Formatters may change the file. Track the bytes that actually
             # remain on disk so diff and revert state match reality.

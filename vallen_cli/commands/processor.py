@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import shlex
 from dataclasses import dataclass
 from pathlib import Path
@@ -47,33 +48,42 @@ async def process_input(raw: str) -> CommandResult:
     if not text:
         return CommandResult(handled=True, output="")
 
-    normalized = text.lower()
-    if ("skill" in normalized and any(marker in normalized for marker in ("apa aja", "apa saja", "daftar", "list", "punya"))):
-        skills = get_skills(get_workspace().active_project_path, refresh=True)
-        if skills:
-            lines = [f"Skills VALLEN NEXT ({len(skills)}):", ""]
-            lines.extend(f"- {skill.name}: {skill.description or '(tanpa deskripsi)'}" for skill in sorted(skills.values(), key=lambda item: item.name))
-            return CommandResult(handled=True, output="\n".join(lines), kind="info")
-        return CommandResult(handled=True, output="No skills installed.", kind="info")
-
     # ── /cd or cd <path> ─────────────────────────────────────────────────
-    if text.lower().startswith("cd ") or text.lower() == "cd" or text.lower().startswith("/cd ") or text.lower() == "/cd":
+    if text.lower().startswith("/cd ") or text.lower() == "/cd":
         return await _cmd_cd(text)
-
-    # ── vall <cmd> ────────────────────────────────────────────────────────
-    if text.lower().startswith("vall ") or text.lower() == "vall":
-        return await _handle_vall(text)
+    if text.lower().startswith("cd ") or text.lower() == "cd":
+        # Only treat as cd command if target directory exists, otherwise let it pass as user text
+        cd_target = text[3:].strip().strip("\"'")
+        if not cd_target or Path(cd_target).expanduser().is_dir():
+            return await _cmd_cd(text)
 
     # ── /slash commands ───────────────────────────────────────────────────
     if text.startswith("/"):
         return await _handle_slash(text)
+
+    # ── Check intent for listing skills ───────────────────────────────────
+    # Support phrases like "bang mau tau skills lu apa aja" or "daftar skill"
+    # while not hijacking tasks like "Tambahkan checklist untuk skill baru"
+    normalized = text.lower()
+    if "checklist" not in normalized and "playlist" not in normalized and re.search(r"\bskills?\b", normalized):
+        if any(marker in normalized for marker in ("apa aja", "apa saja", "daftar", "list", "punya")):
+            skills = get_skills(get_workspace().active_project_path, refresh=True)
+            if skills:
+                lines = [f"Skills VALLEN NEXT ({len(skills)}):", ""]
+                lines.extend(f"- {skill.name}: {skill.description or '(tanpa deskripsi)'}" for skill in sorted(skills.values(), key=lambda item: item.name))
+                return CommandResult(handled=True, output="\n".join(lines), kind="info")
+            return CommandResult(handled=True, output="No skills installed.", kind="info")
+
+    # ── vall <cmd> ────────────────────────────────────────────────────────
+    if text.lower().startswith("vall ") or text.lower() == "vall":
+        return await _handle_vall(text)
 
     # ── !shell ────────────────────────────────────────────────────────────
     if text.startswith("!"):
         return await _handle_shell(text[1:].strip())
 
     # ── @file references → inject file content into AI prompt ─────────────
-    if text.startswith("@") or " @" in text:
+    if "@" in text:
         return _handle_file_ref(text)
 
     return CommandResult(handled=False)
@@ -81,7 +91,10 @@ async def process_input(raw: str) -> CommandResult:
 
 async def _cmd_cd(raw: str) -> CommandResult:
     """Change workspace directory and populate project tree: /cd <path> or cd <path>."""
-    parts = shlex.split(raw)
+    try:
+        parts = shlex.split(raw)
+    except ValueError:
+        parts = raw.split()
     if len(parts) < 2 or not parts[1].strip():
         ws = get_workspace()
         curr = ws.active_project_path or "(none)"
@@ -91,7 +104,8 @@ async def _cmd_cd(raw: str) -> CommandResult:
             kind="info",
         )
 
-    target_raw = parts[1].strip()
+    # Support paths with spaces
+    target_raw = raw.partition(" ")[2].strip().strip("\"'")
     target_path = Path(os.path.expanduser(target_raw)).resolve()
 
     if not target_path.exists():
@@ -965,30 +979,20 @@ async def _cmd_commands_init() -> CommandResult:
         kind="info",
     )
 async def _handle_shell(cmd: str) -> CommandResult:
+    from ..tools.shell_tools import _run_command
     ws = get_workspace()
     cwd = ws.active_project_path or os.getcwd()
     try:
-        proc = await asyncio.create_subprocess_shell(
-            cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=cwd,
-        )
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
-        out = stdout.decode(errors="replace")
-        err = stderr.decode(errors="replace")
+        rc, out, err = await _run_command(cmd, cwd=cwd, timeout=30)
         combined = out
         if err:
             combined += ("\n[stderr]\n" + err) if out else err
-        rc = proc.returncode or 0
         kind = "success" if rc == 0 else "error"
         return CommandResult(
             handled=True,
             output=combined or "(no output)",
             kind=kind,
         )
-    except asyncio.TimeoutError:
-        return CommandResult(handled=True, output="✗ Command timed out (30s)", kind="error")
     except Exception as e:
         return CommandResult(handled=True, output=f"✗ {e}", kind="error")
 
@@ -1002,7 +1006,6 @@ def _handle_file_ref(text: str) -> CommandResult:
     Replace @path tokens with file content and return the augmented prompt.
     The result is forwarded to the AI, not treated as a command.
     """
-    import re
     ws = get_workspace()
     root = ws.active_project_path or os.getcwd()
 
@@ -1019,17 +1022,18 @@ def _handle_file_ref(text: str) -> CommandResult:
                     content = content[:20000] + "\n... (truncated)"
                 rel = p.relative_to(Path(root)) if root else p
                 return f"\n\n--- {rel} ---\n```\n{content}\n```\n"
-            except Exception as e:
-                return f"[Could not read {raw_path}: {e}]"
-        return f"[File not found: {raw_path}]"
+            except Exception:
+                return m.group(0)
+        # If not an existing file, keep original token (e.g. @property, @dataclass)
+        return m.group(0)
 
     pattern = re.compile(r"@([\w./\-]+)")
     new_prompt = pattern.sub(replace_ref, text)
 
     return CommandResult(
-        handled=True,
+        handled=new_prompt != text,
         output="",
-        new_prompt=new_prompt,
+        new_prompt=new_prompt if new_prompt != text else None,
     )
 
 

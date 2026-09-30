@@ -190,7 +190,7 @@ class OpenAICompatibleProvider(BaseProvider):
                         body = await response.aread()
                         error_msg = self._parse_error(body, response.status_code)
                         # Mark non-retryable HTTP errors (auth, bad request, etc.)
-                        non_retryable = response.status_code in (400, 401, 403, 404, 422, 429)
+                        non_retryable = response.status_code in (400, 401, 403, 404, 422)
                         yield StreamChunk(
                             finish_reason="error", 
                             error=f"Provider error: {error_msg}",

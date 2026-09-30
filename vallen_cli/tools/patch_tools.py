@@ -95,8 +95,14 @@ def parse_vallen_patch(patch_text: str) -> list[PatchHunk]:
         if current is None:
             return
         if current.kind == "add":
-            current.content = "\n".join(body_lines)
-            if body_lines and not current.content.endswith("\n"):
+            cleaned_add_lines: list[str] = []
+            for b_line in body_lines:
+                if b_line.startswith("+"):
+                    cleaned_add_lines.append(b_line[1:])
+                else:
+                    cleaned_add_lines.append(b_line)
+            current.content = "\n".join(cleaned_add_lines)
+            if cleaned_add_lines and not current.content.endswith("\n"):
                 current.content += "\n"
         elif current.kind == "update":
             current.chunks = _parse_update_chunks(body_lines)
@@ -398,7 +404,10 @@ class ApplyPatchTool(BaseTool):
             try:
                 p = _resolve(hunk.path)
                 if hunk.kind == "add":
-                    before, file_newline = read_text_preserve(p) if p.exists() else (None, "\n")
+                    if p.exists():
+                        errors.append(f"add: file already exists: {hunk.path}. Use '*** Update File: {hunk.path}' to update existing files.")
+                        continue
+                    file_newline = "\n"
                     await asyncio.to_thread(p.parent.mkdir, parents=True, exist_ok=True)
                     await asyncio.to_thread(write_text_preserve, p, hunk.content, file_newline)
                     results.append(f"A {p.name}")
@@ -408,7 +417,7 @@ class ApplyPatchTool(BaseTool):
                     except Exception:
                         pass
                     after, _ = read_text_preserve(p)
-                    tracker.record_write(str(p), before, after)
+                    tracker.record_write(str(p), None, after)
 
                 elif hunk.kind == "delete":
                     if p.exists():
@@ -450,13 +459,19 @@ class ApplyPatchTool(BaseTool):
                         # Handle rename/move
                         if hunk.move_to:
                             dest = _resolve(hunk.move_to)
-                            dest_before, dest_newline = read_text_preserve(dest) if dest.exists() else (None, file_newline)
-                            await asyncio.to_thread(dest.parent.mkdir, parents=True, exist_ok=True)
-                            await asyncio.to_thread(write_text_preserve, dest, content, dest_newline)
-                            await asyncio.to_thread(p.unlink)
-                            tracker.record_delete(str(p), before)
-                            tracker.record_write(str(dest), dest_before, content)
-                            results.append(f"R {p.name} -> {dest.name}")
+                            if dest.resolve() == p.resolve():
+                                results.append(f"M {p.name}")
+                            else:
+                                if dest.exists():
+                                    errors.append(f"move {p.name} -> {dest.name}: destination file already exists")
+                                    continue
+                                dest_before, dest_newline = read_text_preserve(dest) if dest.exists() else (None, file_newline)
+                                await asyncio.to_thread(dest.parent.mkdir, parents=True, exist_ok=True)
+                                await asyncio.to_thread(write_text_preserve, dest, content, dest_newline)
+                                await asyncio.to_thread(p.unlink)
+                                tracker.record_delete(str(p), before)
+                                tracker.record_write(str(dest), dest_before, content)
+                                results.append(f"R {p.name} -> {dest.name}")
                         else:
                             results.append(f"M {p.name}")
 
