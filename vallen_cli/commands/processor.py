@@ -555,6 +555,21 @@ async def _handle_slash(text: str) -> CommandResult:
             data={"action": "revert_all"},
         )
 
+    if cmd == "/undo":
+        target = parts[1] if len(parts) > 1 else ""
+        from ..core.file_tracker import get_file_tracker
+        tracker = get_file_tracker()
+        if target:
+            ok, msg = await tracker.undo_last_patch(target)
+            return CommandResult(handled=True, output=msg, kind="success" if ok else "error")
+        else:
+            # Undo last modified file if any
+            if tracker.changes:
+                last_path = tracker.changes[-1].path
+                ok, msg = await tracker.undo_last_patch(last_path)
+                return CommandResult(handled=True, output=msg, kind="success" if ok else "error")
+            return CommandResult(handled=True, output="No changes to undo.", kind="info")
+
     if cmd == "/agents":
         return await _cmd_agents(parts[1] if len(parts) > 1 else "")
 

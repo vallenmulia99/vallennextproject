@@ -262,6 +262,71 @@ class StreamingMessage(Widget):
             self._timer = None
 
 
+TOOL_EMOJIS = {
+    "read": "📖",
+    "read_file": "📖",
+    "grep": "🔎",
+    "search_files": "🔎",
+    "glob": "🗂️",
+    "list_files": "🗂️",
+    "webfetch": "🌐",
+    "websearch": "🌐",
+    "search_web": "🌐",
+    "web_extract": "🌐",
+    "lsp": "🧭",
+    "code_intelligence": "🧭",
+    "skill": "🧠",
+    "list_skills": "🧠",
+    "git_status": "🌿",
+    "git_diff": "🌿",
+    "git_log": "🌿",
+    "write": "📝",
+    "write_file": "📝",
+    "edit": "📝",
+    "edit_file": "📝",
+    "apply_patch": "📝",
+    "shell": "⚡",
+    "run_shell": "⚡",
+    "bash": "⚡",
+    "todowrite": "📋",
+    "todo": "📋",
+    "remember": "💾",
+    "memory": "💾",
+}
+
+
+def _extract_summary(tool_name: str, output: str) -> str:
+    """Extract a concise one-line summary for read/grep/glob without showing raw code."""
+    import re
+    if tool_name in ("read", "read_file"):
+        lines = [l for l in output.splitlines() if l.strip()]
+        if not lines:
+            return "tidak ada baris"
+        # Check if line numbers are present
+        count = sum(1 for l in lines if re.match(r"^\s*\d+:", l))
+        if count:
+            return f"{count} baris dibaca"
+        return f"{len(lines)} baris dibaca"
+    if tool_name in ("grep", "search_files"):
+        m = re.search(r"Found\s+(\d+)\s+match", output)
+        if m:
+            c = m.group(1)
+            # count distinct files
+            files = set(re.findall(r"^\s*([^\s:]+):", output, re.MULTILINE))
+            if files:
+                return f"{c} cocok di {len(files)} file"
+            return f"{c} cocok"
+        if "No matches found" in output:
+            return "tidak ada cocok"
+        return "pencarian selesai"
+    if tool_name in ("glob", "list_files"):
+        lines = [l for l in output.splitlines() if l.strip() and not l.startswith("Directory:")]
+        if not lines:
+            return "tidak ada file"
+        return f"{len(lines)} item"
+    return "selesai"
+
+
 class ToolCallCard(Widget):
     """OpenCode-style tool call card with live star spinner and dynamic status update."""
 
@@ -282,12 +347,13 @@ class ToolCallCard(Widget):
         "[ EXECUTING ]",
     ]
 
-    def __init__(self, tool_name: str, desc: str, output: str = "", status: str = "running", **kwargs) -> None:
+    def __init__(self, tool_name: str, desc: str, output: str = "", status: str = "running", diff: str = "", **kwargs) -> None:
         super().__init__(**kwargs)
         self._tool_name = tool_name
         self._desc = desc
         self._output = output
         self._status = status  # running | done | rejected | error
+        self._diff = diff
         self._frame = 0
         self._timer = None
         self._static_header: Static | None = None
@@ -324,7 +390,7 @@ class ToolCallCard(Widget):
         if self._static_header:
             self._static_header.update(header)
 
-    def update_result(self, output: str, status: str = "done") -> None:
+    def update_result(self, output: str, status: str = "done", diff: str = "") -> None:
         """Dynamically updates running card to completed status."""
         if self._timer:
             self._timer.stop()
@@ -332,10 +398,16 @@ class ToolCallCard(Widget):
 
         self._output = output
         self._status = status
+        if diff:
+            self._diff = diff
         self._render_card()
 
     def _render_card(self) -> None:
+        emoji = TOOL_EMOJIS.get(self._tool_name, "◆")
+        is_read_tool = self._tool_name in ("read", "read_file", "grep", "search_files", "glob", "list_files")
+
         badge_style = {
+            "preparing": "bold #a855f7",
             "running": "bold #ffaa33",
             "done": "bold #22c55e",
             "rejected": "bold #ffaa88",
@@ -343,22 +415,43 @@ class ToolCallCard(Widget):
         }.get(self._status, "bold #9b88ff")
 
         badge_text = {
+            "preparing": "[ MENYIAPKAN ]",
             "running": "[ RUNNING ]",
             "done": "[ DONE ]",
             "rejected": "[ REJECTED ]",
             "error": "[ ERROR ]",
         }.get(self._status, f"[{self._status.upper()}]")
 
-        header = Text(f"  ◆ {self._tool_name} ", style="bold #b0a0ff")
+        header = Text(f"  {emoji} {self._tool_name} ", style="bold #b0a0ff")
         header.append(badge_text, style=badge_style)
         if self._desc:
             header.append(f"  {self._desc}", style="#9999bb")
+
+        # In concise read/search mode: append summary directly on header if done
+        if is_read_tool and self._status == "done":
+            summary = _extract_summary(self._tool_name, self._output)
+            header.append(f"  ✓ {summary}", style="bold #22c55e")
 
         if self._static_header:
             self._static_header.update(header)
 
         if self._static_output:
-            if self._output:
+            if is_read_tool:
+                # Do NOT display raw output for read/search tools!
+                # Only show single line reason if error or rejected
+                if self._status in ("error", "rejected") and self._output:
+                    err_line = self._output.strip().splitlines()[0][:100]
+                    self._static_output.update(Text(f"    ✗ {err_line}", style="#ff8888"))
+                else:
+                    self._static_output.update("")
+            elif self._diff:
+                # File mutation tools with rich unified diff
+                from rich.syntax import Syntax
+                try:
+                    self._static_output.update(Syntax(self._diff, "diff", theme="monokai", word_wrap=True))
+                except Exception:
+                    self._static_output.update(Text(f"    {self._diff}", style="#c8f0c8"))
+            elif self._output:
                 out_preview = self._output[:1200]
                 if len(self._output) > 1200:
                     out_preview += f"\n... ({len(self._output) - 1200:,} more chars)"

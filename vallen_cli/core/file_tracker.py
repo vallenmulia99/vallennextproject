@@ -31,11 +31,18 @@ class FileTracker:
 
     def __init__(self) -> None:
         self._changes: list[FileChange] = []
+        self._history_stack: dict[str, list[str | None]] = {}
 
     def reset(self) -> None:
         self._changes.clear()
+        self._history_stack.clear()
 
     def record_write(self, path: str, before: str | None, after: str) -> None:
+        norm_path = str(Path(path).resolve())
+        if norm_path not in self._history_stack:
+            self._history_stack[norm_path] = []
+        self._history_stack[norm_path].append(before)
+
         kind: ChangeKind = "created" if before is None else "modified"
         # If we already have a record for this path, update the 'after'
         for change in self._changes:
@@ -128,6 +135,27 @@ class FileTracker:
             except Exception as e:
                 return False, f"Revert failed: {e}"
         return False, f"No tracked changes for: {path}"
+
+    async def undo_last_patch(self, path: str) -> tuple[bool, str]:
+        """Undo only the most recent patch/edit operation on a file."""
+        norm_path = str(Path(path).resolve())
+        stack = self._history_stack.get(norm_path, [])
+        if not stack:
+            return False, f"No undo history available for {path}"
+
+        last_before = stack.pop()
+        p = Path(norm_path)
+        try:
+            if last_before is None:
+                if p.exists():
+                    await asyncio.to_thread(p.unlink)
+                return True, f"Undo created file: removed {path}"
+            else:
+                await asyncio.to_thread(p.parent.mkdir, parents=True, exist_ok=True)
+                await asyncio.to_thread(p.write_text, last_before)
+                return True, f"Undo applied: restored previous version of {path}"
+        except Exception as e:
+            return False, f"Undo failed: {e}"
 
     async def revert_all(self) -> list[tuple[str, bool, str]]:
         """Revert all tracked changes. Returns list of (path, success, message)."""

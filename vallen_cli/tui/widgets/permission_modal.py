@@ -89,6 +89,8 @@ class PermissionModal(ModalScreen):
             yield Static("⚠  PERMISSION REQUEST", id="pm-title")
             yield Static(Text(f"  Tool: {self._request.tool_name}", style="bold #ffaa44"), id="pm-tool")
             yield Static(Text(f"  {self._request.description}", style="#c8c8e8"), id="pm-desc")
+            if getattr(self._request, "preview", ""):
+                yield Static(Text(f"  Preview:\n{self._request.preview[:800]}", style="#88cc88"), id="pm-preview")
             options = [
                 ListItem(PermOption("y", "Allow once", "#66dd88", "allow this operation")),
                 ListItem(PermOption("a", "Always this target", "#9b88ff", "remember this file or command for this session")),

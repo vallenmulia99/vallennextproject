@@ -5,8 +5,10 @@ from vallen_cli.tools.patch_tools import ApplyPatchTool
 
 @pytest.mark.asyncio
 async def test_apply_patch_update(tmp_path: Path):
+    from vallen_cli.tools.file_tools import mark_file_read
     target = tmp_path / "sample.py"
     target.write_text("def add(a, b):\n    return a - b\n")
+    mark_file_read(str(target))
 
     patch = f"""*** Begin Patch
 *** Update File: {target}
@@ -40,10 +42,11 @@ async def test_apply_patch_add_file(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_apply_patch_move_to_rename(tmp_path: Path):
-    # Item 4: Test *** Move to: format renames/moves file
+    from vallen_cli.tools.file_tools import mark_file_read
     old_file = tmp_path / "old_name.py"
     new_file = tmp_path / "new_name.py"
     old_file.write_text("def hello():\n    return 42\n")
+    mark_file_read(str(old_file))
 
     patch = f"""*** Begin Patch
 *** Update File: {old_file}
@@ -63,10 +66,13 @@ async def test_apply_patch_move_to_rename(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_apply_patch_reports_partial_application_as_failure(tmp_path: Path):
+    from vallen_cli.tools.file_tools import mark_file_read
     good = tmp_path / "good.py"
     bad = tmp_path / "bad.py"
     good.write_text("answer = 1\n")
     bad.write_text("answer = 2\n")
+    mark_file_read(str(good))
+    mark_file_read(str(bad))
 
     patch = f"""*** Begin Patch
 *** Update File: {good}
@@ -82,7 +88,7 @@ async def test_apply_patch_reports_partial_application_as_failure(tmp_path: Path
     result = await ApplyPatchTool().execute(patch=patch)
     assert not result.success
     assert "answer = 42" in good.read_text()
-    assert "chunk(s) failed" in result.output
+    assert "chunk" in result.output
 
 
 def test_apply_chunk_pure_addition_newline():
@@ -157,12 +163,14 @@ def test_patch_preserves_lf_line_endings():
 async def test_apply_patch_preserves_crlf_and_bytes_on_disk(tmp_path):
     import textwrap
     from vallen_cli.tools.patch_tools import ApplyPatchTool
+    from vallen_cli.tools.file_tools import mark_file_read
     from vallen_cli.core.workspace import get_workspace
 
     get_workspace().new_project(str(tmp_path))
     target = tmp_path / "crlf_file.txt"
     raw = b"line1\r\nline2\r\n\xff\xfe\r\n"
     target.write_bytes(raw)
+    mark_file_read(str(target))
 
     patch_str = f"""*** Begin Patch
 *** Update File: {target}

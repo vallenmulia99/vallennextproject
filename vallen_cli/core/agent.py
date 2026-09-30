@@ -177,6 +177,7 @@ async def run_agent(
     length_truncation_count = 0
     effective_max_rounds = max(max_tool_rounds, 100) if autopilot else max_tool_rounds
     pending_tool_calls: list[dict[str, Any]] = []
+    read_history_counts: dict[tuple[str, int, int], int] = {}
 
     def verification_signature(output: str) -> str:
         """Ignore volatile timing text when comparing two verification runs."""
@@ -232,6 +233,7 @@ async def run_agent(
             attempt_delta = ""
             attempt_reasoning = ""
             attempt_pending_tool_calls: list[dict[str, Any]] = []
+            prepared_tool_indices: set[int] = set()
             stream_finish_reason: str | None = None
             cancelled = False
             try:
@@ -285,6 +287,16 @@ async def run_agent(
                                     entry["function"]["name"] += func["name"]
                                 if func.get("arguments"):
                                     entry["function"]["arguments"] += func["arguments"]
+
+                                # Emit tool_prepare once per tool call as soon as name is received
+                                t_name = entry["function"]["name"]
+                                if t_name and idx not in prepared_tool_indices:
+                                    prepared_tool_indices.add(idx)
+                                    if on_event:
+                                        on_event(AgentEvent("tool_prepare", {
+                                            "index": idx,
+                                            "name": t_name,
+                                        }))
 
                         if chunk.finish_reason == "stop" or (chunk.finish_reason and not chunk.tool_calls):
                             stream_finish_reason = chunk.finish_reason
@@ -426,6 +438,18 @@ async def run_agent(
                         "description": perm_description,
                     }))
 
+                # ── Prepare preview if mutation tool ─────────────────────────
+                perm_preview = ""
+                if tool_name == "apply_patch":
+                    perm_preview = args.get("patchText", "")[:1500]
+                elif tool_name in ("edit", "edit_file"):
+                    old_s = args.get("oldString") or args.get("old_text") or args.get("old_string", "")
+                    new_s = args.get("newString") or args.get("new_text") or args.get("new_string", "")
+                    if old_s or new_s:
+                        perm_preview = f"- {old_s[:500]}\n+ {new_s[:500]}"
+                elif tool_name in ("write", "write_file"):
+                    perm_preview = args.get("content", "")[:1000]
+
                 if tool_name == "apply_patch" and patch_paths:
                     allowed = True
                     for p_path in patch_paths:
@@ -433,6 +457,7 @@ async def run_agent(
                             tool_name=tool_name,
                             description=f"Apply patch to {p_path}",
                             path=p_path,
+                            preview=perm_preview,
                         )
                         if not await perm.guard(p_req):
                             allowed = False
@@ -443,6 +468,7 @@ async def run_agent(
                         tool_name=tool_name,
                         description=perm_description,
                         path=perm_path,
+                        preview=perm_preview,
                     )
                     allowed = await perm.guard(perm_request)
                 if not allowed:
@@ -462,8 +488,10 @@ async def run_agent(
                 if is_file_mutation and project_path:
                     await ensure_verification_baseline()
 
-                # ── Snapshot before write/edit for file tracker ──────────────
-                before_content = await _snapshot_before(tool_name, args)
+                # ── Snapshot before write/edit/patch for UI diff & file tracker ─
+                files_snapshot = await _snapshot_files_before(tool_name, args)
+                primary_path = args.get("filePath") or args.get("path") or args.get("file_path", "")
+                before_content = files_snapshot.get(primary_path) if primary_path else None
 
                 # ── Execute tool with file lock if mutating a file ───────────
                 # Check cancellation before executing each tool
@@ -496,8 +524,20 @@ async def run_agent(
                 _record_change(tracker, tool_name, args, before_content, result)
                 if result.success and tool_name in ("write", "write_file", "edit", "edit_file", "apply_patch", "shell", "run_shell"):
                     invalidate_git_cache(project_path)
+                    # Reset repetitive read count if files are modified
+                    read_history_counts.clear()
 
                 output = format_tool_output(result)
+
+                # Check repeated reads without changes
+                if tool_name in ("read", "read_file") and result.success:
+                    r_path = args.get("filePath") or args.get("path") or ""
+                    r_offset = int(args.get("offset", 1))
+                    r_limit = int(args.get("limit", 2000))
+                    r_key = (r_path, r_offset, r_limit)
+                    read_history_counts[r_key] = read_history_counts.get(r_key, 0) + 1
+                    if read_history_counts[r_key] >= 3:
+                        output += f"\n\n[Catatan]: Bagian ini ({r_path}, offset={r_offset}) sudah Anda baca {read_history_counts[r_key]} kali. Gunakan informasi yang sudah didapat atau gunakan `grep` untuk mencari bagian spesifik."
                 cfg_verify_on_edit = cfg.get("verify", {}).get("on_edit", False) if isinstance(cfg.get("verify"), dict) else False
                 if (
                     cfg_verify_on_edit
@@ -560,12 +600,17 @@ async def run_agent(
                 if doom_msg:
                     output += doom_msg
 
+                ui_diff = ""
+                if is_file_mutation and result.success and files_snapshot:
+                    ui_diff = _build_unified_diff(files_snapshot, project_path)
+
                 if on_event:
                     on_event(AgentEvent("tool_result", {
                         "name": tool_name,
                         "tool": tool_name,
                         "output": output,
                         "success": result.success,
+                        "diff": ui_diff,
                     }))
 
                 # Pass multimodal blocks if present (e.g. image read), else output string
@@ -623,12 +668,26 @@ async def run_agent(
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 def _describe_tool_call(tool_name: str, args: dict[str, Any]) -> str:
-    path = args.get("filePath") or args.get("path") or args.get("file_path", "?")
+    path = args.get("filePath") or args.get("path") or args.get("file_path", "")
+    if tool_name in ("read", "read_file"):
+        offset = args.get("offset", 1)
+        limit = args.get("limit", 2000)
+        end = offset + limit - 1
+        target = path or "file"
+        return f"{target} (baris {offset}-{end})"
+    if tool_name in ("grep", "search_files"):
+        pat = args.get("pattern", "")
+        target = path or args.get("include", "") or "."
+        return f"'{pat}' di {target}"
+    if tool_name in ("glob", "list_files"):
+        pat = args.get("pattern", "")
+        target = path or pat or "."
+        return f"{target}"
     if tool_name in ("write", "write_file"):
         size = len(args.get("content", ""))
-        return f"Write {size} bytes to {path}"
+        return f"Write {size} bytes to {path or '?'}"
     if tool_name in ("edit", "edit_file"):
-        return f"Edit {path}"
+        return f"Edit {path or '?'}"
     if tool_name in ("shell", "run_shell", "bash"):
         return f"Run: {args.get('command', '?')}"
     if tool_name == "apply_patch":
@@ -646,21 +705,105 @@ def _describe_tool_call(tool_name: str, args: dict[str, Any]) -> str:
     return f"{tool_name}({', '.join(f'{k}={v!r}' for k, v in list(args.items())[:2])})"
 
 
-async def _snapshot_before(tool_name: str, args: dict[str, Any]) -> str | None:
-    """Read file content before a write/edit operation for diff tracking."""
-    if tool_name not in ("write", "write_file", "edit", "edit_file"):
-        return None
-    path = args.get("filePath") or args.get("path", "")
-    if not path:
-        return None
-    try:
-        from ..core.workspace import resolve_workspace_path
-        p = resolve_workspace_path(path)
-        if p.exists() and p.is_file():
-            return await asyncio.to_thread(p.read_text, errors="replace")
-    except (PermissionError, OSError, Exception):
-        return None
-    return None  # file doesn't exist yet = "created"
+async def _snapshot_files_before(tool_name: str, args: dict[str, Any]) -> dict[str, str | None]:
+    """Capture snapshot of files before write/edit/apply_patch for UI diff generation."""
+    snapshots: dict[str, str | None] = {}
+    paths: list[str] = []
+    if tool_name in ("write", "write_file", "edit", "edit_file"):
+        p_str = args.get("filePath") or args.get("path") or args.get("file_path", "")
+        if p_str:
+            paths.append(p_str)
+    elif tool_name == "apply_patch":
+        from ..tools.patch_tools import parse_vallen_patch
+        try:
+            hunks = parse_vallen_patch(args.get("patchText", ""))
+            for h in hunks:
+                if h.path:
+                    paths.append(h.path)
+                if h.move_to:
+                    paths.append(h.move_to)
+        except Exception:
+            pass
+
+    from ..core.workspace import resolve_workspace_path
+    for p_str in paths:
+        try:
+            p = resolve_workspace_path(p_str)
+            if p.exists() and p.is_file():
+                content = await asyncio.to_thread(p.read_text, errors="replace")
+                snapshots[str(p)] = content
+            else:
+                snapshots[str(p)] = None
+        except Exception:
+            snapshots[p_str] = None
+    return snapshots
+
+
+def _build_unified_diff(
+    snapshots: dict[str, str | None],
+    project_path: str = "",
+    max_total_lines: int = 120,
+) -> str:
+    """Generate a clean unified diff preview with relative paths and line counts."""
+    import difflib
+    from pathlib import Path
+
+    root = Path(project_path).resolve() if project_path else None
+    diff_sections: list[str] = []
+    total_lines = 0
+
+    for path_str, before in snapshots.items():
+        try:
+            p = Path(path_str).resolve()
+            after = p.read_text(errors="replace") if (p.exists() and p.is_file()) else None
+            rel_path = str(p.relative_to(root)) if root else path_str
+        except Exception:
+            after = None
+            rel_path = path_str
+
+        if before == after:
+            continue
+
+        # Compute +A -B line changes
+        before_lines = before.splitlines() if before is not None else []
+        after_lines = after.splitlines() if after is not None else []
+        diff_iter = list(difflib.unified_diff(
+            before_lines,
+            after_lines,
+            fromfile=f"a/{rel_path}",
+            tofile=f"b/{rel_path}",
+            lineterm="",
+            n=2,
+        ))
+
+        additions = sum(1 for l in diff_iter if l.startswith("+") and not l.startswith("+++"))
+        deletions = sum(1 for l in diff_iter if l.startswith("-") and not l.startswith("---"))
+
+        if before is None:
+            status_desc = "file baru"
+        elif after is None:
+            status_desc = "dihapus"
+        else:
+            status_desc = "diubah"
+
+        header = f"📝 {rel_path} ({status_desc}, +{additions} -{deletions})"
+        diff_body: list[str] = []
+
+        for line in diff_iter:
+            if line.startswith("---") or line.startswith("+++"):
+                continue
+            diff_body.append(line)
+            total_lines += 1
+            if total_lines >= max_total_lines:
+                diff_body.append("... (diff dipotong)")
+                break
+
+        section = header + ("\n" + "\n".join(diff_body) if diff_body else "")
+        diff_sections.append(section)
+        if total_lines >= max_total_lines:
+            break
+
+    return "\n\n".join(diff_sections)
 
 
 def _record_change(tracker, tool_name: str, args: dict[str, Any], before: str | None, result) -> None:

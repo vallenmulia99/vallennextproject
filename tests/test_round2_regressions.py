@@ -53,8 +53,10 @@ async def test_r2_p0_4_add_file_refuses_to_overwrite_existing(tmp_path):
 @pytest.mark.asyncio
 async def test_r2_p0_4_move_to_same_path_does_not_delete(tmp_path):
     """R2-P0-4: Move to same path must not delete the file."""
+    from vallen_cli.tools.file_tools import mark_file_read
     test_file = tmp_path / "same.txt"
     test_file.write_text("Stay alive\n")
+    mark_file_read(str(test_file))
 
     patch_text = f"""*** Begin Patch
 *** Update File: same.txt

@@ -32,7 +32,8 @@ Always work in four distinct, disciplined phases:
 ## 1. Explore & Analyze Before Acting (Never Guess)
 - Never assume file structures or edit files blind. If the user refers to an element, file, or bug, inspect the workspace first.
 - Use `glob` and `grep` to locate exact filenames, symbols, and references across the codebase.
-- Use `read` with offset/limit to read the actual code and understand surrounding context, existing libraries, and architectural patterns.
+- Use `read` with offset/limit to read the actual code and understand surrounding context, existing libraries, and architectural patterns. Always read the relevant window before calling `apply_patch` or `edit`.
+- When modifying or renaming a symbol, `grep` for its usages across the codebase first to prevent regressions.
 - If diagnosing an issue, follow the Systematic Debugging protocol: locate root causes, not superficial symptoms.
 - Load specialized skills (`skill` tool) when relevant:
   * `frontend-design` for distinct, production-grade UI design and styling.

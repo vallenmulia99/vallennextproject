@@ -1130,17 +1130,23 @@ class MainScreen(Screen):
             task_strip.start("Thinking")
             full_response = ""
             cancel = self._cancel_event
-            active_tool_card: ToolCallCard | None = None
+            active_tool_cards: dict[int, ToolCallCard] = {}
             agent_task: asyncio.Task | None = None
 
             def on_event(event: AgentEvent) -> None:
-                nonlocal full_response, active_tool_card, stream_widget
+                nonlocal full_response, active_tool_cards, stream_widget
                 if cancel.is_set():
                     return
                 if event.kind == "stream_reset":
                     if stream_widget is not None:
                         stream_widget.remove()
                         stream_widget = None
+                    for card in list(active_tool_cards.values()):
+                        try:
+                            card.remove()
+                        except Exception:
+                            pass
+                    active_tool_cards.clear()
                     full_response = ""
                     return
                 if event.kind == "token":
@@ -1168,8 +1174,9 @@ class MainScreen(Screen):
                         self._post_system("  OK: Session compacted. Context reset with summary.")
                     elif isinstance(status, str) and status.startswith("  "):
                         self._post_system(status)
-                elif event.kind == "tool_start":
-                    task_strip.update_label(f"Running {event.data.get('name', 'tool')}")
+                elif event.kind == "tool_prepare":
+                    idx = event.data.get("index", 0)
+                    tool_name = event.data.get("name", "tool")
                     if stream_widget is not None:
                         if not stream_widget._has_tokens and not stream_widget._has_reasoning:
                             stream_widget.remove()
@@ -1178,23 +1185,75 @@ class MainScreen(Screen):
                             stream_widget.finalize(stream_widget._buffer)
                             stream_widget = None
 
+                    label = f"menyiapkan {tool_name}"
+                    if tool_name in ("glob", "list_files"):
+                        label = "menyiapkan pencarian file"
+                    elif tool_name in ("grep", "search_files"):
+                        label = "menyiapkan grep"
+                    elif tool_name in ("read", "read_file"):
+                        label = "menyiapkan read"
+                    elif tool_name in ("edit", "edit_file", "write", "write_file", "apply_patch"):
+                        label = "menyiapkan patch"
+
+                    task_strip.update_label(label)
+                    card = ToolCallCard(tool_name=tool_name, desc=f"{label}...", status="preparing")
+                    active_tool_cards[idx] = card
+                    panel.mount(card)
+                    panel.scroll_end(animate=False)
+                elif event.kind == "tool_start":
                     tool_name = event.data.get("name", "")
                     desc = event.data.get("description", "")
-                    active_tool_card = ToolCallCard(tool_name=tool_name, desc=desc, status="running")
-                    panel.mount(active_tool_card)
+                    task_strip.update_label(f"Running {tool_name or 'tool'}")
+                    if stream_widget is not None:
+                        if not stream_widget._has_tokens and not stream_widget._has_reasoning:
+                            stream_widget.remove()
+                            stream_widget = None
+                        else:
+                            stream_widget.finalize(stream_widget._buffer)
+                            stream_widget = None
+
+                    # Reuse existing preparing card if available, else create new
+                    reused_card = None
+                    for k in sorted(active_tool_cards.keys()):
+                        card = active_tool_cards[k]
+                        if card._status == "preparing" and (card._tool_name == tool_name or not card._tool_name):
+                            reused_card = card
+                            break
+
+                    if reused_card is not None:
+                        reused_card._desc = desc
+                        reused_card._status = "running"
+                        reused_card._render_card()
+                    else:
+                        new_card = ToolCallCard(tool_name=tool_name, desc=desc, status="running")
+                        panel.mount(new_card)
+                        next_key = max(active_tool_cards.keys(), default=-1) + 1
+                        active_tool_cards[next_key] = new_card
                     panel.scroll_end(animate=False)
                 elif event.kind == "tool_result":
                     task_strip.update_label("Updating workspace")
                     tool_name = event.data.get("name", "")
                     output = event.data.get("output", "")
+                    diff = event.data.get("diff", "")
                     success = event.data.get("success", True)
                     rejected = event.data.get("rejected", False)
                     status = "rejected" if rejected else ("done" if success else "error")
-                    if active_tool_card is not None:
-                        active_tool_card.update_result(output, status=status)
-                        active_tool_card = None
+
+                    target_card = None
+                    target_key = None
+                    for k in sorted(active_tool_cards.keys()):
+                        card = active_tool_cards[k]
+                        if card._status in ("running", "preparing") and card._tool_name == tool_name:
+                            target_card = card
+                            target_key = k
+                            break
+
+                    if target_card is not None:
+                        target_card.update_result(output, status=status, diff=diff)
+                        if target_key is not None:
+                            active_tool_cards.pop(target_key, None)
                     else:
-                        card = ToolCallCard(tool_name=tool_name, desc="", output=output, status=status)
+                        card = ToolCallCard(tool_name=tool_name, desc="", output=output, status=status, diff=diff)
                         panel.mount(card)
                     panel.scroll_end(animate=False)
                     if tool_name in ("todowrite", "todo"):

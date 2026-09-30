@@ -37,6 +37,7 @@ class PermRequest:
     tool_name: str          # e.g. "write", "edit", "shell"
     description: str        # e.g. "Write 500 bytes to src/main.py"
     path: str = ""          # target file path or command argument
+    preview: str = ""       # optional diff/content preview for interactive confirmation
 
 
 PermCallback = Callable[[PermRequest], Awaitable[PermReply]]

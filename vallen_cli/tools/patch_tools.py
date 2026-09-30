@@ -420,6 +420,10 @@ class ApplyPatchTool(BaseTool):
                     tracker.record_write(str(p), None, after)
 
                 elif hunk.kind == "delete":
+                    from .file_tools import is_file_read
+                    if not is_file_read(str(p)):
+                        errors.append(f"delete: you must Read {p.name} before deleting it. Use the read tool first.")
+                        continue
                     if p.exists():
                         before, _ = read_text_preserve(p) if p.exists() else (None, "\n")
                         tracker.record_delete(str(p), before)
@@ -432,26 +436,46 @@ class ApplyPatchTool(BaseTool):
                     if not p.exists():
                         errors.append(f"update: file not found: {hunk.path}")
                         continue
+                    from .file_tools import is_file_read
+                    if not is_file_read(str(p)):
+                        errors.append(f"update: you must Read {p.name} before updating it. Use the read tool first.")
+                        continue
                     before, file_newline = read_text_preserve(p)
                     content = before
-                    failed_chunks = 0
-                    for chunk in hunk.chunks:
+                    failed_chunks: list[int] = []
+                    import difflib
+                    file_lines = content.splitlines()
+
+                    for c_idx, chunk in enumerate(hunk.chunks, start=1):
                         result = apply_chunk(content, chunk)
                         if result is None:
-                            failed_chunks += 1
+                            failed_chunks.append(c_idx)
+                            # Find approximate line recommendation
+                            target_sample = chunk.get("context_before") or chunk.get("removes") or []
+                            suggested_line = None
+                            if target_sample:
+                                query = target_sample[0].strip()
+                                for l_no, fl in enumerate(file_lines, start=1):
+                                    if query and query in fl:
+                                        suggested_line = l_no
+                                        break
+                                if suggested_line is None and query:
+                                    close = difflib.get_close_matches(query, [fl.strip() for fl in file_lines], n=1, cutoff=0.5)
+                                    if close:
+                                        for l_no, fl in enumerate(file_lines, start=1):
+                                            if fl.strip() == close[0]:
+                                                suggested_line = l_no
+                                                break
+                            advice = f" `read` file ini dengan offset di sekitar baris {suggested_line} sebelum mencoba lagi." if suggested_line else " `read` file ini terlebih dahulu untuk memeriksa konteks baris."
+                            missing_ctx = f"'{target_sample[0].strip()}'" if target_sample else "hunk context"
+                            errors.append(
+                                f"update {p.name}: chunk #{c_idx} gagal cocok pada baris {missing_ctx}.{advice}"
+                            )
                         else:
                             content = result
 
-                    if failed_chunks > 0:
-                        errors.append(
-                            f"update {p.name}: {failed_chunks}/{len(hunk.chunks)} chunk(s) failed to apply — "
-                            "context lines didn't match. Use read_file to check exact content first."
-                        )
-                        if content != before:
-                            # partial apply — still write what succeeded
-                            await asyncio.to_thread(write_text_preserve, p, content, file_newline)
-                            tracker.record_write(str(p), before, content)
-                            results.append(f"M {p.name} (partial: {len(hunk.chunks) - failed_chunks}/{len(hunk.chunks)} chunks)")
+                    if failed_chunks:
+                        pass
                     else:
                         await asyncio.to_thread(write_text_preserve, p, content, file_newline)
                         tracker.record_write(str(p), before, content)
