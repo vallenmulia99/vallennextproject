@@ -89,7 +89,7 @@ def test_build_unified_diff_builder(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_tool_call_card_renders_diff_with_syntax():
+async def test_tool_call_card_renders_diff_fast_no_syntax():
     diff_text = "📝 app.js (diubah, +1 -1)\n-  const x = 1;\n+  const x = 2;"
     class DummyApp(App):
         def compose(self):
@@ -104,6 +104,21 @@ async def test_tool_call_card_renders_diff_with_syntax():
     app = DummyApp()
     async with app.run_test():
         card = app.query_one(ToolCallCard)
-        renderable = card._static_output.render()._renderable
-        assert isinstance(renderable, Syntax)
-        assert renderable.lexer.name.lower() in ("diff", "udiff")
+        rendered = card._static_output.render()
+        renderable = getattr(rendered, "_renderable", rendered)
+        assert not isinstance(renderable, Syntax)
+        rendered_str = str(rendered)
+        assert "-  const x = 1;" in rendered_str
+        assert "+  const x = 2;" in rendered_str
+
+
+def test_render_diff_text_truncation_and_no_syntax():
+    from vallen_cli.tui.widgets.message import _render_diff_text
+
+    diff_lines = ["📝 file.py"] + [f"+line {i}" for i in range(150)]
+    rendered = _render_diff_text("\n".join(diff_lines), max_lines=120)
+    assert isinstance(rendered, Text)
+    assert not isinstance(rendered, Syntax)
+    lines = rendered.plain.splitlines()
+    assert len(lines) == 121  # 120 content lines + 1 truncation note
+    assert "dipotong" in rendered.plain

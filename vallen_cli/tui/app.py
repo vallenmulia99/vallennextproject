@@ -1014,12 +1014,26 @@ class MainScreen(Screen):
 
     def _post_system(self, text: str) -> None:
         panel = self.query_one("#chat-panel", ScrollableContainer)
-        panel.mount(ChatMessage("system_info", text))
+        self._mount_chat_widget(panel, ChatMessage("system_info", text))
         panel.scroll_end(animate=False)
+
+    def _mount_chat_widget(self, panel: ScrollableContainer, widget: Widget) -> None:
+        """Mount widget and keep total mounted chat items within budget to prevent DOM lag."""
+        MAX_MOUNTED_CHAT_ITEMS = 160
+        panel.mount(widget)
+        children = list(panel.children)
+        if len(children) > MAX_MOUNTED_CHAT_ITEMS:
+            # Prune oldest items to keep Textual layout fast and smooth
+            overflow = len(children) - MAX_MOUNTED_CHAT_ITEMS
+            for old_child in children[:overflow]:
+                try:
+                    old_child.remove()
+                except Exception:
+                    pass
 
     def _post_message(self, role: str, content: str) -> None:
         panel = self.query_one("#chat-panel", ScrollableContainer)
-        panel.mount(ChatMessage(role, content))
+        self._mount_chat_widget(panel, ChatMessage(role, content))
         panel.scroll_end(animate=False)
 
     def _clear_chat(self) -> None:
@@ -1122,7 +1136,7 @@ class MainScreen(Screen):
 
         # Create initial streaming message widget
         stream_widget: StreamingMessage | None = StreamingMessage()
-        panel.mount(stream_widget)
+        self._mount_chat_widget(panel, stream_widget)
         panel.scroll_end(animate=False)
 
         try:
@@ -1152,13 +1166,13 @@ class MainScreen(Screen):
                 if event.kind == "token":
                     if stream_widget is None:
                         stream_widget = StreamingMessage()
-                        panel.mount(stream_widget)
+                        self._mount_chat_widget(panel, stream_widget)
                     stream_widget.append(event.data)
                     panel.scroll_end(animate=False)
                 elif event.kind == "reasoning":
                     if stream_widget is None:
                         stream_widget = StreamingMessage()
-                        panel.mount(stream_widget)
+                        self._mount_chat_widget(panel, stream_widget)
                     stream_widget.append_reasoning(event.data)
                     panel.scroll_end(animate=False)
                 elif event.kind == "token_usage":
@@ -1198,7 +1212,7 @@ class MainScreen(Screen):
                     task_strip.update_label(label)
                     card = ToolCallCard(tool_name=tool_name, desc=f"{label}...", status="preparing")
                     active_tool_cards[idx] = card
-                    panel.mount(card)
+                    self._mount_chat_widget(panel, card)
                     panel.scroll_end(animate=False)
                 elif event.kind == "tool_start":
                     tool_name = event.data.get("name", "")
@@ -1226,7 +1240,7 @@ class MainScreen(Screen):
                         reused_card._render_card()
                     else:
                         new_card = ToolCallCard(tool_name=tool_name, desc=desc, status="running")
-                        panel.mount(new_card)
+                        self._mount_chat_widget(panel, new_card)
                         next_key = max(active_tool_cards.keys(), default=-1) + 1
                         active_tool_cards[next_key] = new_card
                     panel.scroll_end(animate=False)
@@ -1254,7 +1268,7 @@ class MainScreen(Screen):
                             active_tool_cards.pop(target_key, None)
                     else:
                         card = ToolCallCard(tool_name=tool_name, desc="", output=output, status=status, diff=diff)
-                        panel.mount(card)
+                        self._mount_chat_widget(panel, card)
                     panel.scroll_end(animate=False)
                     if tool_name in ("todowrite", "todo"):
                         try:

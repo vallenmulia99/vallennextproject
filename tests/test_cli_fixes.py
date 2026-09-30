@@ -49,7 +49,6 @@ def test_assistant_markdown_render():
 async def test_tool_call_card_diff_render():
     from textual.app import App
     from vallen_cli.tui.widgets.message import ToolCallCard
-    from rich.syntax import Syntax
 
     diff_text = "--- a/foo.py\n+++ b/foo.py\n@@ -1 +1 @@\n-old\n+new"
 
@@ -61,9 +60,34 @@ async def test_tool_call_card_diff_render():
     async with app.run_test():
         card = app.query_one(ToolCallCard)
         assert card._static_output is not None
-        rendered = card._static_output.render()._renderable
-        assert isinstance(rendered, Syntax)
-        assert rendered.lexer.name.lower() == "diff"
+        rendered_str = str(card._static_output.render())
+        assert "-old" in rendered_str
+        assert "+new" in rendered_str
+
+
+@pytest.mark.asyncio
+async def test_multiple_diff_cards_performance():
+    from textual.app import App
+    from textual.containers import ScrollableContainer
+    from vallen_cli.tui.widgets.message import ToolCallCard
+    import time
+
+    class DummyChatApp(App):
+        def compose(self):
+            yield ScrollableContainer(id="chat-panel")
+
+    app = DummyChatApp()
+    async with app.run_test() as pilot:
+        panel = app.query_one("#chat-panel", ScrollableContainer)
+        t0 = time.perf_counter()
+        for i in range(15):
+            diff = f"📝 src/file_{i}.py (diubah, +5 -2)\n@@ -1,5 +1,8 @@\n-old line {i}\n+new line {i}"
+            card = ToolCallCard(tool_name="edit", desc=f"Edit file_{i}.py", status="done", diff=diff)
+            panel.mount(card)
+        await pilot.pause(0.05)
+        dur = time.perf_counter() - t0
+        assert dur < 2.5
+        assert len(panel.children) == 15
 
 
 def test_slash_autocomplete_list():

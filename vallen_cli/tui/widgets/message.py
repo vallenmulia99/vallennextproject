@@ -327,6 +327,40 @@ def _extract_summary(tool_name: str, output: str) -> str:
     return "selesai"
 
 
+def _render_diff_text(diff_str: str, max_lines: int = 120) -> Text:
+    """Fast, zero-pygments line-colored diff rendering with Rich Text.
+    Prevents TUI render stalls caused by heavy Syntax / Pygments lexers.
+    """
+    t = Text()
+    lines = diff_str.splitlines()
+    total = len(lines)
+    truncated = False
+    if total > max_lines:
+        lines = lines[:max_lines]
+        truncated = True
+
+    for i, line in enumerate(lines):
+        if i > 0:
+            t.append("\n")
+        if line.startswith("+++ ") or line.startswith("--- "):
+            t.append(f"    {line}", style="bold #9999bb")
+        elif line.startswith("+"):
+            t.append(f"    {line}", style="#4ade80")  # bright green
+        elif line.startswith("-"):
+            t.append(f"    {line}", style="#f87171")  # soft red
+        elif line.startswith("@@"):
+            t.append(f"    {line}", style="bold #c084fc")  # purple context
+        elif line.startswith("📝 "):
+            t.append(f"  {line}", style="bold #38bdf8")  # cyan file header
+        else:
+            t.append(f"    {line}", style="#94a3b8")
+
+    if truncated:
+        t.append(f"\n    ... ({total - max_lines} baris dipotong)", style="dim #64748b")
+
+    return t
+
+
 class ToolCallCard(Widget):
     """OpenCode-style tool call card with live star spinner and dynamic status update."""
 
@@ -354,6 +388,7 @@ class ToolCallCard(Widget):
         self._output = output
         self._status = status  # running | done | rejected | error
         self._diff = diff
+        self._cached_diff_render: Text | None = _render_diff_text(diff) if diff else None
         self._frame = 0
         self._timer = None
         self._static_header: Static | None = None
@@ -396,13 +431,23 @@ class ToolCallCard(Widget):
             self._timer.stop()
             self._timer = None
 
+        if self._status == status and self._output == output and (not diff or self._diff == diff):
+            return
+
         self._output = output
         self._status = status
         if diff:
             self._diff = diff
+            self._cached_diff_render = _render_diff_text(diff)
         self._render_card()
 
     def _render_card(self) -> None:
+        if self._status == "running" and self.is_mounted and self._timer is None:
+            self._timer = self.set_interval(0.12, self._tick_tool)
+        elif self._status != "running" and self._timer:
+            self._timer.stop()
+            self._timer = None
+
         emoji = TOOL_EMOJIS.get(self._tool_name, "◆")
         is_read_tool = self._tool_name in ("read", "read_file", "grep", "search_files", "glob", "list_files")
 
@@ -445,22 +490,18 @@ class ToolCallCard(Widget):
                 else:
                     self._static_output.update("")
             elif self._diff:
-                # File mutation tools with rich unified diff
-                from rich.syntax import Syntax
-                try:
-                    self._static_output.update(Syntax(self._diff, "diff", theme="monokai", word_wrap=True))
-                except Exception:
-                    self._static_output.update(Text(f"    {self._diff}", style="#c8f0c8"))
+                # File mutation tools with lightweight zero-pygments colored diff
+                if self._cached_diff_render is None:
+                    self._cached_diff_render = _render_diff_text(self._diff)
+                self._static_output.update(self._cached_diff_render)
             elif self._output:
                 out_preview = self._output[:1200]
                 if len(self._output) > 1200:
                     out_preview += f"\n... ({len(self._output) - 1200:,} more chars)"
                 if self._tool_name in ("edit", "edit_file", "apply_patch") or ("@@" in out_preview and ("\n+" in out_preview or "\n-" in out_preview)):
-                    from rich.syntax import Syntax
-                    try:
-                        self._static_output.update(Syntax(out_preview, "diff", theme="monokai", word_wrap=True))
-                    except Exception:
-                        self._static_output.update(Text(f"    {out_preview}", style="#c8f0c8"))
+                    if self._cached_diff_render is None:
+                        self._cached_diff_render = _render_diff_text(out_preview)
+                    self._static_output.update(self._cached_diff_render)
                 else:
                     self._static_output.update(Text(f"    {out_preview}", style="#c8f0c8"))
             else:
