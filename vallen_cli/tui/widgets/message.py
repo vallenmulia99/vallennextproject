@@ -152,6 +152,7 @@ class StreamingMessage(Widget):
         self._has_tokens = False
         self._has_reasoning = False
         self._last_stream_update = 0.0
+        self._finalized = False
 
         self._static_header: Static | None = None
         self._static_loader: Static | None = None
@@ -175,9 +176,16 @@ class StreamingMessage(Widget):
         yield self._static_content
 
     def on_mount(self) -> None:
-        self._timer = self.set_interval(0.1, self._tick)
+        if not self._finalized and self._timer is None:
+            self._timer = self.set_interval(0.1, self._tick)
 
     def _tick(self) -> None:
+        if self._finalized:
+            if self._timer:
+                self._timer.stop()
+                self._timer = None
+            return
+
         self._frame += 1
         elapsed = time.time() - self._start_time
 
@@ -199,7 +207,7 @@ class StreamingMessage(Widget):
             self._flush_stream_content()
 
     def _is_finalized(self) -> bool:
-        return self._timer is None
+        return self._finalized
 
     def _flush_stream_content(self) -> None:
         if self._static_content and not self._is_finalized():
@@ -242,6 +250,7 @@ class StreamingMessage(Widget):
             self._flush_stream_content()
 
     def finalize(self, full_content: str) -> None:
+        self._finalized = True
         if self._timer:
             self._timer.stop()
             self._timer = None
@@ -438,7 +447,7 @@ class ToolCallCard(Widget):
 
     def on_mount(self) -> None:
         self._render_card()
-        if self._status == "running":
+        if self._status == "running" and self._timer is None:
             self._timer = self.set_interval(0.12, self._tick_tool)
 
     def _tick_tool(self) -> None:
@@ -458,7 +467,7 @@ class ToolCallCard(Widget):
             header.append(f"  {self._desc}", style="#9999bb")
 
         if self._static_header:
-            self._static_header.update(header)
+            self._static_header.update(header, layout=False)
 
     def update_result(self, output: str, status: str = "done", diff: str = "") -> None:
         """Dynamically updates running card to completed status."""

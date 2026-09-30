@@ -847,12 +847,14 @@ class TaskStrip(Widget):
     def on_mount(self) -> None:
         self._frame = 0
         self._started = 0.0
-        self._timer = self.set_interval(0.25, self._tick)
+        self._timer = None
 
     def start(self, label: str = "Working") -> None:
         self._started = time.monotonic()
         self.add_class("active")
         self._update(label)
+        if self._timer is None:
+            self._timer = self.set_interval(0.25, self._tick)
 
     def update_label(self, label: str) -> None:
         if self.has_class("active"):
@@ -860,17 +862,24 @@ class TaskStrip(Widget):
 
     def stop(self) -> None:
         self.remove_class("active")
+        if self._timer:
+            self._timer.stop()
+            self._timer = None
 
     def _tick(self) -> None:
         if self.has_class("active"):
             self._frame = (self._frame + 1) % len(self.FRAMES)
             self._update("Working")
+        else:
+            if self._timer:
+                self._timer.stop()
+                self._timer = None
 
     def _update(self, label: str) -> None:
         elapsed = time.monotonic() - self._started
         try:
             self.query_one("#task-strip-text", Static).update(
-                f"{self.FRAMES[self._frame]}  {label}  [{elapsed:.1f}s]"
+                f"{self.FRAMES[self._frame]}  {label}  [{elapsed:.1f}s]", layout=False
             )
         except NoMatches:
             pass
